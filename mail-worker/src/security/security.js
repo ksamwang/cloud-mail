@@ -19,7 +19,6 @@ const exclude = [
 	'/setting/websiteConfig',
 	'/webhooks',
 	'/init',
-	'/public/genToken',
 	'/telegram',
 	'/test',
 	'/oauth'
@@ -68,6 +67,10 @@ const requirePerms = [
 		'/token/list',
 		'/token/update',
 		'/token/delete',
+	'/rule/create',
+	'/rule/list',
+	'/rule/update',
+	'/rule/delete',
 	'/regKey/history'
 ];
 
@@ -101,6 +104,10 @@ const premKey = {
 		'api-token:add': ['/token/create'],
 		'api-token:set': ['/token/update'],
 		'api-token:delete': ['/token/delete'],
+	'rule:query': ['/rule/list'],
+	'rule:add': ['/rule/create'],
+	'rule:set': ['/rule/update'],
+	'rule:delete': ['/rule/delete'],
 };
 
 app.use('*', async (c, next) => {
@@ -119,6 +126,9 @@ app.use('*', async (c, next) => {
 
 		// 从 api_token 表校验 Token（替换旧 KV 单 Token）
 		const publicToken = c.req.header(constant.TOKEN_HEADER);
+		if (!publicToken) {
+			throw new BizError(t('publicTokenFail'), 401);
+		}
 		const tokenService = await import('../service/token-service.js');
 		const tokenRow = await tokenService.default.validate(c, publicToken);
 		if (!tokenRow) {

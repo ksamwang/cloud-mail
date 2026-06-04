@@ -13,6 +13,9 @@
                @jump="jumpContent"
   >
     <template #first>
+      <el-input v-model="keyword" class="mail-search" size="small" placeholder="全文搜索" @keyup.enter="searchMail"/>
+      <Icon class="icon" icon="iconoir:search" width="20" height="20" @click="searchMail"/>
+      <Icon class="icon" icon="fluent:branch-24-regular" width="20" height="20" @click="toggleThread"/>
       <Icon class="icon" @click="changeTimeSort" icon="material-symbols-light:timer-arrow-down-outline"
             v-if="params.timeSort === 0" width="28" height="28"/>
       <Icon class="icon" @click="changeTimeSort" icon="material-symbols-light:timer-arrow-up-outline" v-else
@@ -27,7 +30,7 @@ import {useAccountStore} from "@/store/account.js";
 import {useEmailStore} from "@/store/email.js";
 import {useSettingStore} from "@/store/setting.js";
 import emailScroll from "@/components/email-scroll/index.vue"
-import {emailList, emailDelete, emailLatest, emailRead} from "@/request/email.js";
+import {emailList, emailDelete, emailLatest, emailRead, emailSearch, emailThreads} from "@/request/email.js";
 import {starAdd, starCancel} from "@/request/star.js";
 import {defineOptions, h, onMounted, reactive, ref, watch} from "vue";
 import {sleep} from "@/utils/time-utils.js";
@@ -44,6 +47,8 @@ const emailStore = useEmailStore();
 const accountStore = useAccountStore();
 const settingStore = useSettingStore();
 const scroll = ref({})
+const keyword = ref('')
+const mode = ref('list')
 const params = reactive({
   timeSort: 0,
 })
@@ -60,7 +65,18 @@ watch(() => accountStore.currentAccountId, () => {
 
 function changeTimeSort() {
   params.timeSort = params.timeSort ? 0 : 1
+  mode.value = 'list'
   scroll.value.refreshList();
+}
+
+function searchMail() {
+  mode.value = keyword.value ? 'search' : 'list'
+  scroll.value.refreshList()
+}
+
+function toggleThread() {
+  mode.value = mode.value === 'thread' ? 'list' : 'thread'
+  scroll.value.refreshList()
 }
 
 function jumpContent(email) {
@@ -138,7 +154,19 @@ function cancelStar(email) {
   emailStore.starScroll?.deleteEmail([email.emailId])
 }
 
-function getEmailList(emailId, size) {
+async function getEmailList(emailId, size) {
+  if (mode.value === 'search') {
+    const list = await emailSearch({keyword: keyword.value})
+    return {list: list || [], total: list?.length || 0, latestEmail: list?.[0] || null}
+  }
+  if (mode.value === 'thread') {
+    const data = await emailThreads({accountId: accountStore.currentAccountId, size})
+    const list = (data.threads || []).map(row => ({
+      ...row,
+      subject: row.replies?.length ? `${row.subject || ''} (${row.replies.length})` : row.subject
+    }))
+    return {list, total: data.total || list.length, latestEmail: list[0] || null}
+  }
   const accountId =  accountStore.currentAccountId;
   const allReceive = accountStore.currentAccount.allReceive;
   return emailList(accountId, allReceive, emailId, params.timeSort, size, 0).then(data => {

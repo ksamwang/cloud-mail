@@ -1,7 +1,6 @@
 import BizError from '../error/biz-error';
 import orm from '../entity/orm';
-import { v4 as uuidv4 } from 'uuid';
-import { and, asc, desc, eq, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import saltHashUtils from '../utils/crypto-utils';
 import cryptoUtils from '../utils/crypto-utils';
 import emailUtils from '../utils/email-utils';
@@ -10,10 +9,10 @@ import verifyUtils from '../utils/verify-utils';
 import { t } from '../i18n/i18n';
 import reqUtils from '../utils/req-utils';
 import dayjs from 'dayjs';
-import { isDel, roleConst } from '../const/entity-const';
+import { roleConst } from '../const/entity-const';
 import email from '../entity/email';
-import userService from './user-service';
-import KvConst from '../const/kv-const';
+import user from '../entity/user';
+import tokenService from './token-service';
 
 const publicService = {
 
@@ -78,6 +77,19 @@ const publicService = {
 			conditions.push(eq(email.isDel, isDel))
 		}
 
+		const tokenTags = c.get('tokenTags') || [];
+		if (tokenTags.length > 0) {
+			const taggedUsers = await orm(c)
+				.select({ userId: user.userId })
+				.from(user)
+				.where(inArray(user.tag, tokenTags))
+				.all();
+			if (taggedUsers.length === 0) {
+				return [];
+			}
+			conditions.push(inArray(email.userId, taggedUsers.map(row => row.userId)));
+		}
+
 		if (conditions.length === 1) {
 			query.where(...conditions)
 		} else if (conditions.length > 1) {
@@ -99,6 +111,15 @@ const publicService = {
 
 		if (list.length === 0) return;
 
+		const tokenTags = c.get('tokenTags') || [];
+		const tokenId = c.get('tokenId');
+		const addUserLimit = Number(c.get('tokenAddUserLimit') || 0);
+		const addUserUsed = Number(c.get('tokenAddUserUsed') || 0);
+
+		if (addUserLimit > 0 && list.length > addUserLimit - addUserUsed) {
+			throw new BizError(`配额不足：Token 剩余 ${addUserLimit - addUserUsed} 次，请求 ${list.length} 个`, 403);
+		}
+
 		for (const emailRow of list) {
 			if (!verifyUtils.isEmail(emailRow.email)) {
 				throw new BizError(t('notEmail'));
@@ -106,6 +127,11 @@ const publicService = {
 
 			if (!c.env.domain.includes(emailUtils.getDomain(emailRow.email))) {
 				throw new BizError(t('notEmailDomain'));
+			}
+
+			emailRow.tag = (emailRow.tag || '').trim();
+			if (tokenTags.length > 0 && (!emailRow.tag || !tokenTags.includes(emailRow.tag))) {
+				throw new BizError(`标签 '${emailRow.tag || '(空)'}' 超出此 token 授权范围`, 403);
 			}
 
 			const { salt, hash } = await saltHashUtils.hashPassword(
@@ -127,7 +153,7 @@ const publicService = {
 		const userList = [];
 
 		for (const emailRow of list) {
-			let { email, hash, salt, roleName } = emailRow;
+			let { email, hash, salt, roleName, tag } = emailRow;
 			let type = defRole.roleId;
 
 			if (roleName) {
@@ -135,14 +161,14 @@ const publicService = {
 				type = roleRow ? roleRow.roleId : type;
 			}
 
-			const userSql = `INSERT INTO user (email, password, salt, type, os, browser, active_ip, create_ip, device, active_time, create_time)
-			VALUES ('${email}', '${hash}', '${salt}', '${type}', '${os}', '${browser}', '${activeIp}', '${activeIp}', '${device}', '${activeTime}', '${activeTime}')`
+			const userSql = `INSERT INTO user (email, password, salt, type, os, browser, active_ip, create_ip, device, active_time, create_time, tag)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
 			const accountSql = `INSERT INTO account (email, name, user_id)
-			VALUES ('${email}', '${emailUtils.getName(email)}', 0);`;
+			VALUES (?, ?, 0);`;
 
-			userList.push(c.env.db.prepare(userSql));
-			userList.push(c.env.db.prepare(accountSql));
+			userList.push(c.env.db.prepare(userSql).bind(email, hash, salt, type, os, browser, activeIp, activeIp, device, activeTime, activeTime, tag || ''));
+			userList.push(c.env.db.prepare(accountSql).bind(email, emailUtils.getName(email)));
 
 		}
 
@@ -150,6 +176,9 @@ const publicService = {
 
 		try {
 			await c.env.db.batch(userList);
+			if (tokenId && addUserLimit > 0) {
+				await tokenService.incrAddUserUsed(c, tokenId, list.length);
+			}
 		} catch (e) {
 			if(e.message.includes('SQLITE_CONSTRAINT')) {
 				throw new BizError(t('emailExistDatabase'))
@@ -158,36 +187,6 @@ const publicService = {
 			}
 		}
 
-	},
-
-	async genToken(c, params) {
-
-		await this.verifyUser(c, params)
-
-		const uuid = uuidv4();
-
-		await c.env.kv.put(KvConst.PUBLIC_KEY, uuid);
-
-		return {token: uuid}
-	},
-
-	async verifyUser(c, params) {
-
-		const { email, password } = params
-
-		const userRow = await userService.selectByEmailIncludeDel(c, email);
-
-		if (email !== c.env.admin) {
-			throw new BizError(t('notAdmin'));
-		}
-
-		if (!userRow || userRow.isDel === isDel.DELETE) {
-			throw new BizError(t('notExistUser'));
-		}
-
-		if (!await cryptoUtils.verifyPassword(password, userRow.salt, userRow.password)) {
-			throw new BizError(t('IncorrectPwd'));
-		}
 	}
 
 }

@@ -2,6 +2,7 @@ import orm from '../entity/orm';
 import { att } from '../entity/att';
 import { and, eq, isNull, inArray, desc } from 'drizzle-orm';
 import r2Service from './r2-service';
+import keyUtils from '../utils/key-utils';
 import constant from '../const/constant';
 import fileUtils from '../utils/file-utils';
 import { attConst } from '../const/entity-const';
@@ -152,7 +153,7 @@ const attService = {
 
 		for (let att of attList) {
 			att.buff = fileUtils.base64ToUint8Array(att.content);
-			att.key = constant.ATTACHMENT_PREFIX + await fileUtils.getBuffHash(att.buff) + '_' + Date.now().toString(36) + fileUtils.getExtFileName(att.filename);
+			att.key = await keyUtils.attachmentKey(constant.ATTACHMENT_PREFIX, att.buff, att.filename, `send/${emailId}`);
 			const attData = { userId, accountId, emailId };
 			attData.key = att.key;
 			attData.size = att.buff.length;

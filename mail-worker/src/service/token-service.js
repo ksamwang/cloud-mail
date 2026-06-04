@@ -1,6 +1,6 @@
 import orm from '../entity/orm';
 import { apiToken } from '../entity/api-token';
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, and, desc, sql } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import BizError from '../error/biz-error';
 
@@ -64,7 +64,7 @@ const tokenService = {
 
 	async incrAddUserUsed(c, tokenId, count) {
 		await orm(c).update(apiToken).set({
-			addUserUsed: apiToken.addUserUsed + count
+			addUserUsed: sql`${apiToken.addUserUsed} + ${count}`
 		}).where(eq(apiToken.tokenId, tokenId)).run();
 	}
 };

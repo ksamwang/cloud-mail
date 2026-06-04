@@ -2,6 +2,7 @@
   <div class="user-box">
     <div class="header-actions">
       <Icon class="icon" icon="ion:add-outline" width="23" height="23" @click="openAdd"/>
+      <Icon class="icon" icon="fluent:people-add-24-regular" width="22" height="22" @click="openBatchAdd"/>
       <div class="search">
         <el-input
             v-model="params.email"
@@ -185,6 +186,25 @@
         <el-button class="btn" type="primary" @click="submit" :loading="addLoading"
         >{{ $t('add') }}
         </el-button>
+      </div>
+    </el-dialog>
+    <el-dialog v-model="showBatchAdd" title="批量创建邮箱" width="520" @closed="resetBatchAddForm">
+      <div class="container">
+        <el-input v-model="batchForm.prefix" placeholder="邮箱前缀"/>
+        <el-select v-model="batchForm.domain" placeholder="域名">
+          <el-option v-for="item in domainList" :key="item" :label="item" :value="item.replace('@','')"/>
+        </el-select>
+        <el-input-number v-model="batchForm.count" :min="1" :max="100"/>
+        <el-input v-model="batchForm.password" type="password" placeholder="统一密码"/>
+        <el-select v-model="batchForm.roleName" placeholder="身份">
+          <el-option v-for="item in roleList" :label="item.name" :value="item.name" :key="item.roleId"/>
+        </el-select>
+        <el-button class="btn" type="primary" :loading="batchLoading" @click="submitBatchAdd">创建</el-button>
+        <el-table v-if="batchResults.length" :data="batchResults" height="240">
+          <el-table-column prop="email" label="邮箱"/>
+          <el-table-column prop="password" label="密码"/>
+        </el-table>
+        <el-button v-if="batchResults.length" @click="copyBatchResults">复制全部</el-button>
       </div>
     </el-dialog>
     <el-dialog class="account-dialog" v-model="accountShow" :title="t('userAccount')" @closed="resetAccountList" >
@@ -373,6 +393,7 @@ import {
   userSetStatus,
   userSetType,
   userAdd,
+  userBatchAdd,
   userRestSendCount,
   userRestore,
   userDeleteAccount,
@@ -443,6 +464,14 @@ const addForm = reactive({
   type: null,
 })
 
+const batchForm = reactive({
+  prefix: '',
+  domain: settingStore.domainList[0]?.replace('@', '') || '',
+  count: 10,
+  password: '',
+  roleName: ''
+})
+
 const params = reactive({
   email: '',
   num: 1,
@@ -458,8 +487,11 @@ const userForm = reactive({
 })
 
 const showAdd = ref(false)
+const showBatchAdd = ref(false)
 const accountShow = ref(false)
 const addLoading = ref(false);
+const batchLoading = ref(false);
+const batchResults = reactive([])
 const setTypeShow = ref(false)
 const setPwdShow = ref(false)
 const pagerCount = ref(10)
@@ -689,6 +721,41 @@ function resetAddForm() {
 
 function openAdd() {
   showAdd.value = true
+}
+
+function openBatchAdd() {
+  showBatchAdd.value = true
+}
+
+function resetBatchAddForm() {
+  batchForm.prefix = ''
+  batchForm.domain = settingStore.domainList[0]?.replace('@', '') || ''
+  batchForm.count = 10
+  batchForm.password = ''
+  batchForm.roleName = ''
+  batchResults.splice(0)
+}
+
+async function submitBatchAdd() {
+  if (!batchForm.prefix || !batchForm.domain || !batchForm.password) {
+    ElMessage.error('请填写前缀、域名和密码')
+    return
+  }
+  batchLoading.value = true
+  try {
+    const list = await userBatchAdd({...batchForm})
+    batchResults.splice(0)
+    batchResults.push(...(list || []))
+    ElMessage.success(`成功创建 ${batchResults.length} 个邮箱`)
+    refresh()
+  } finally {
+    batchLoading.value = false
+  }
+}
+
+function copyBatchResults() {
+  navigator.clipboard.writeText(batchResults.map(row => `${row.email}----${row.password}`).join('\n'))
+  ElMessage.success('已复制')
 }
 
 function submit() {

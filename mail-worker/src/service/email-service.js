@@ -752,6 +752,10 @@ const emailService = {
 		}).where(eq(email.resendEmailId, resendEmailId)).returning().get();
 	},
 
+	updateStatusById(c, emailId, status, message = '') {
+		return orm(c).update(email).set({ status, message }).where(eq(email.emailId, emailId)).run();
+	},
+
 	async selectUserEmailCountsCombined(c, userIds) {
 		if (!userIds || userIds.length === 0) return [];
 		const result = await c.env.db.prepare(`
@@ -1066,11 +1070,14 @@ const emailService = {
 		// 构建 FTS5 多词 AND 匹配
 		const searchTerm = keyword.split(/\s+/).map(k => `"${k}"`).join(' AND ');
 
-		const conditions = [`email_fts MATCH '${searchTerm}'`];
+		const conditions = ['email_fts MATCH ?'];
+		const binds = [searchTerm];
 		if (userId !== null) {
-			conditions.push(`e.user_id = ${userId}`);
+			conditions.push('e.user_id = ?');
+			binds.push(userId);
 		}
-		conditions.push(`e.is_del = ${isDel.NORMAL}`);
+		conditions.push('e.is_del = ?');
+		binds.push(isDel.NORMAL);
 
 		const result = await c.env.db.prepare(`
 			SELECT e.* FROM email e
@@ -1078,7 +1085,7 @@ const emailService = {
 			WHERE ${conditions.join(' AND ')}
 			ORDER BY rank
 			LIMIT 50
-		`).all();
+		`).bind(...binds).all();
 
 		const list = result.results || [];
 		await this.emailAddAtt(c, list);

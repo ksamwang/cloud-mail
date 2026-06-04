@@ -16,6 +16,14 @@ export function emailRead(emailIds) {
     return http.put('/email/read', {emailIds})
 }
 
+export function emailSearch(params) {
+    return http.get('/email/search', {params})
+}
+
+export function emailThreads(params) {
+    return http.get('/email/threads', {params})
+}
+
 export function emailSend(form,progress) {
     return http.post('/email/send', form,{
         onUploadProgress: (e) => {

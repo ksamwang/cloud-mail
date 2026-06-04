@@ -34,6 +34,7 @@ const dbInit = {
 		await this.v3_3DB(c);
 		await this.v3_4DB(c);
 		await this.v3_5DB(c);
+		await this.v3_6DB(c);
 		await settingService.refresh(c);
 		return c.text('success');
 	},
@@ -43,6 +44,65 @@ const dbInit = {
 			await c.env.db.prepare(`ALTER TABLE setting ADD COLUMN login_darken_factor INTEGER NOT NULL DEFAULT 0;`).run();
 		} catch (e) {
 			console.warn(`跳过字段：${e.message}`);
+		}
+	},
+
+	async v3_6DB(c) {
+		try {
+			await c.env.db.prepare(`
+				CREATE TABLE IF NOT EXISTS email_rule (
+					rule_id INTEGER PRIMARY KEY AUTOINCREMENT,
+					user_id INTEGER NOT NULL,
+					name TEXT NOT NULL DEFAULT '',
+					conditions TEXT NOT NULL DEFAULT '[]',
+					actions TEXT NOT NULL DEFAULT '[]',
+					priority INTEGER NOT NULL DEFAULT 0,
+					enabled INTEGER NOT NULL DEFAULT 1,
+					create_time DATETIME DEFAULT CURRENT_TIMESTAMP
+				)
+			`).run();
+		} catch (e) {
+			console.warn(`email_rule 表创建失败：${e.message}`);
+		}
+
+		try {
+			await c.env.db.prepare(`
+				CREATE TABLE IF NOT EXISTS push_subscription (
+					subscription_id INTEGER PRIMARY KEY AUTOINCREMENT,
+					user_id INTEGER NOT NULL,
+					endpoint TEXT NOT NULL UNIQUE,
+					p256dh TEXT NOT NULL,
+					auth TEXT NOT NULL,
+					create_time DATETIME DEFAULT CURRENT_TIMESTAMP
+				)
+			`).run();
+		} catch (e) {
+			console.warn(`push_subscription 表创建失败：${e.message}`);
+		}
+
+		try {
+			await c.env.db.prepare(`
+				INSERT INTO perm (name, perm_key, pid, type, sort)
+				SELECT '邮件规则查看', 'rule:query', 1, 2, 10
+				WHERE NOT EXISTS (SELECT 1 FROM perm WHERE perm_key = 'rule:query')
+			`).run();
+			await c.env.db.prepare(`
+				INSERT INTO perm (name, perm_key, pid, type, sort)
+				SELECT '邮件规则添加', 'rule:add', 1, 2, 11
+				WHERE NOT EXISTS (SELECT 1 FROM perm WHERE perm_key = 'rule:add')
+			`).run();
+			await c.env.db.prepare(`
+				INSERT INTO perm (name, perm_key, pid, type, sort)
+				SELECT '邮件规则修改', 'rule:set', 1, 2, 12
+				WHERE NOT EXISTS (SELECT 1 FROM perm WHERE perm_key = 'rule:set')
+			`).run();
+			await c.env.db.prepare(`
+				INSERT INTO perm (name, perm_key, pid, type, sort)
+				SELECT '邮件规则删除', 'rule:delete', 1, 2, 13
+				WHERE NOT EXISTS (SELECT 1 FROM perm WHERE perm_key = 'rule:delete')
+			`).run();
+		} catch (e) {
+			console.warn(`邮件规则权限初始化失败：${e.message}`);
 		}
 	},
 

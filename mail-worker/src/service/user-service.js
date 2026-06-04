@@ -168,32 +168,26 @@ const userService = {
 
 		const types = [...new Set(list.map(user => user.type))];
 
-		// 合并查询：7次 → 3次，减少 D1 往返
-		const [combinedEmailCounts, combinedAccountCounts, roleList] = await Promise.all([
-			emailService.selectUserEmailCountsCombined(c, userIds),
-			accountService.selectUserAccountCountsCombined(c, userIds),
+		// 合并统计查询，减少 D1 往返
+		const [combinedCounts, roleList] = await Promise.all([
+			this.selectUserCountsCombined(c, userIds),
 			roleService.selectByIdsHasPermKey(c, types,'email:send')
 		]);
 
-		const receiveMap = Object.fromEntries(combinedEmailCounts.map(item => [item.user_id, item.receive_count]));
-		const sendMap = Object.fromEntries(combinedEmailCounts.map(item => [item.user_id, item.send_count]));
-		const delReceiveMap = Object.fromEntries(combinedEmailCounts.map(item => [item.user_id, item.del_receive_count]));
-		const delSendMap = Object.fromEntries(combinedEmailCounts.map(item => [item.user_id, item.del_send_count]));
-
-		const accountMap = Object.fromEntries(combinedAccountCounts.map(item => [item.user_id, item.account_count]));
-		const delAccountMap = Object.fromEntries(combinedAccountCounts.map(item => [item.user_id, item.del_account_count]));
+		const countMap = Object.fromEntries(combinedCounts.map(item => [item.user_id, item]));
 
 		for (const user of list) {
 
 			const userId = user.userId;
 
-			user.receiveEmailCount = receiveMap[userId] || 0;
-			user.sendEmailCount = sendMap[userId] || 0;
-			user.accountCount = accountMap[userId] || 0;
+			const counts = countMap[userId] || {};
+			user.receiveEmailCount = counts.receive_count || 0;
+			user.sendEmailCount = counts.send_count || 0;
+			user.accountCount = counts.account_count || 0;
 
-			user.delReceiveEmailCount = delReceiveMap[userId] || 0;
-			user.delSendEmailCount = delSendMap[userId] || 0;
-			user.delAccountCount = delAccountMap[userId] || 0;
+			user.delReceiveEmailCount = counts.del_receive_count || 0;
+			user.delSendEmailCount = counts.del_send_count || 0;
+			user.delAccountCount = counts.del_account_count || 0;
 
 			const roleIndex = roleList.findIndex(roleRow => user.type === roleRow.roleId);
 			let sendAction = {};
@@ -217,6 +211,44 @@ const userService = {
 		}
 
 		return { list, total };
+	},
+
+	async selectUserCountsCombined(c, userIds) {
+		if (!userIds || userIds.length === 0) return [];
+		const placeholders = userIds.map(() => '?').join(',');
+		const result = await c.env.db.prepare(`
+			SELECT
+				u.user_id,
+				COALESCE(e.receive_count, 0) AS receive_count,
+				COALESCE(e.del_receive_count, 0) AS del_receive_count,
+				COALESCE(e.send_count, 0) AS send_count,
+				COALESCE(e.del_send_count, 0) AS del_send_count,
+				COALESCE(a.account_count, 0) AS account_count,
+				COALESCE(a.del_account_count, 0) AS del_account_count
+			FROM user u
+			LEFT JOIN (
+				SELECT
+					user_id,
+					COUNT(CASE WHEN type = 0 AND is_del = 0 THEN 1 END) AS receive_count,
+					COUNT(CASE WHEN type = 0 AND is_del = 1 THEN 1 END) AS del_receive_count,
+					COUNT(CASE WHEN type = 1 AND is_del = 0 THEN 1 END) AS send_count,
+					COUNT(CASE WHEN type = 1 AND is_del = 1 THEN 1 END) AS del_send_count
+				FROM email
+				WHERE user_id IN (${placeholders}) AND status != ?
+				GROUP BY user_id
+			) e ON e.user_id = u.user_id
+			LEFT JOIN (
+				SELECT
+					user_id,
+					COUNT(CASE WHEN is_del = 0 THEN 1 END) AS account_count,
+					COUNT(CASE WHEN is_del = 1 THEN 1 END) AS del_account_count
+				FROM account
+				WHERE user_id IN (${placeholders})
+				GROUP BY user_id
+			) a ON a.user_id = u.user_id
+			WHERE u.user_id IN (${placeholders})
+		`).bind(...userIds, emailConst.status.SAVING, ...userIds, ...userIds).all();
+		return result.results || [];
 	},
 
 	async updateUserInfo(c, userId, recordCreateIp = false) {

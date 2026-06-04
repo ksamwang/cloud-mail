@@ -244,9 +244,34 @@
                   <span>{{ $t('storageType') }}</span>
                 </div>
                 <div class="r2domain">
-                  <div class="storage-type">
-                    <el-tag>{{ setting.storageType }}</el-tag>
-                  </div>
+                  <el-select v-model="setting.storageType" style="width: 110px" @change="changeStorageType">
+                    <el-option label="KV" value="KV"/>
+                    <el-option v-if="setting.hasR2" label="R2" value="R2"/>
+                    <el-option label="S3" value="S3"/>
+                    <el-option label="OSS" value="OSS"/>
+                  </el-select>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="settings-card">
+            <div class="card-title">API Token</div>
+            <div class="card-content">
+              <div class="setting-item">
+                <div><span>Token</span></div>
+                <div>
+                  <el-button class="opt-button" size="small" type="primary" @click="openTokenManager">
+                    <Icon icon="fluent:key-24-regular" width="16" height="16"/>
+                  </el-button>
+                </div>
+              </div>
+              <div class="setting-item">
+                <div><span>邮件规则</span></div>
+                <div>
+                  <el-button class="opt-button" size="small" type="primary" @click="openRuleManager">
+                    <Icon icon="fluent:branch-24-regular" width="16" height="16"/>
+                  </el-button>
                 </div>
               </div>
             </div>
@@ -279,6 +304,14 @@
                   <span>{{ setting.ruleType === 0 ? $t('forwardAll') : $t('rules') }}</span>
                   <el-button class="opt-button" size="small" type="primary" @click="openForwardRules">
                     <Icon icon="fluent:settings-48-regular" width="18" height="18"/>
+                  </el-button>
+                </div>
+              </div>
+              <div class="setting-item">
+                <div><span>PWA Push</span></div>
+                <div>
+                  <el-button class="opt-button" size="small" type="primary" @click="subscribePush">
+                    <Icon icon="fluent:alert-24-regular" width="18" height="18"/>
                   </el-button>
                 </div>
               </div>
@@ -806,6 +839,61 @@
         </el-form>
         <el-button type="primary" style="width: 100%;" :loading="settingLoading" @click="saveAiCodeFilter">{{ $t('save') }}</el-button>
       </el-dialog>
+      <el-dialog v-model="tokenManagerShow" title="API Token" width="720">
+        <div class="dialog-box">
+          <el-input v-model="tokenForm.name" placeholder="名称"/>
+          <el-input-tag v-model="tokenForm.tags" placeholder="授权标签"/>
+          <el-input-number v-model="tokenForm.addUserLimit" :min="0"/>
+          <el-button type="primary" @click="createToken">创建</el-button>
+        </div>
+        <el-table :data="tokenRows" height="360">
+          <el-table-column prop="name" label="名称" width="140"/>
+          <el-table-column prop="token" label="Token"/>
+          <el-table-column prop="tags" label="标签" width="160"/>
+          <el-table-column label="配额" width="100">
+            <template #default="{ row }">{{ row.addUserUsed }}/{{ row.addUserLimit || '不限' }}</template>
+          </el-table-column>
+          <el-table-column label="操作" width="120">
+            <template #default="{ row }">
+              <el-button size="small" @click="copyToken(row.token)">复制</el-button>
+              <el-button size="small" type="danger" @click="removeToken(row.tokenId)">删</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+      </el-dialog>
+      <el-dialog v-model="ruleManagerShow" title="邮件规则" width="760">
+        <div class="dialog-box">
+          <el-input v-model="ruleForm.name" placeholder="规则名称"/>
+          <el-select v-model="ruleForm.field" placeholder="条件字段">
+            <el-option label="发件人" value="from"/>
+            <el-option label="主题" value="subject"/>
+            <el-option label="收件人" value="to"/>
+            <el-option label="内容" value="content"/>
+          </el-select>
+          <el-select v-model="ruleForm.op" placeholder="匹配方式">
+            <el-option label="包含" value="contains"/>
+            <el-option label="等于" value="equals"/>
+            <el-option label="正则" value="regex"/>
+          </el-select>
+          <el-input v-model="ruleForm.value" placeholder="匹配值"/>
+          <el-select v-model="ruleForm.action" placeholder="动作">
+            <el-option label="星标" value="star"/>
+            <el-option label="删除" value="delete"/>
+            <el-option label="标记已读" value="markRead"/>
+          </el-select>
+          <el-button type="primary" @click="createRule">创建</el-button>
+        </div>
+        <el-table :data="ruleRows" height="360">
+          <el-table-column prop="name" label="名称"/>
+          <el-table-column prop="conditions" label="条件"/>
+          <el-table-column prop="actions" label="动作"/>
+          <el-table-column label="操作" width="80">
+            <template #default="{ row }">
+              <el-button size="small" type="danger" @click="removeRule(row.ruleId)">删</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+      </el-dialog>
     </el-scrollbar>
   </div>
 </template>
@@ -813,6 +901,9 @@
 <script setup>
 import {computed, defineOptions, nextTick, reactive, ref} from "vue";
 import {deleteBackground, setBackground, setBlackList, settingQuery, settingSet} from "@/request/setting.js";
+import {tokenCreate, tokenDelete, tokenList} from "@/request/token.js";
+import {ruleCreate, ruleDelete, ruleList} from "@/request/rule.js";
+import {pushPublicKey, pushSubscribe} from "@/request/push.js";
 import {useSettingStore} from "@/store/setting.js";
 import {useUiStore} from "@/store/ui.js";
 import {useUserStore} from "@/store/user.js";
@@ -872,6 +963,8 @@ let regVerifyCount = ref(1)
 let addVerifyCount = ref(1)
 let backup = '{}'
 const addS3Show = ref(false)
+const tokenManagerShow = ref(false)
+const ruleManagerShow = ref(false)
 const addVerifyCountShow = ref(false)
 const regVerifyCountShow = ref(false)
 const resendTokenForm = reactive({
@@ -890,6 +983,22 @@ const s3 = reactive({
   s3AccessKey: '',
   s3SecretKey: '',
   forcePathStyle: 1
+})
+
+const tokenRows = reactive([])
+const tokenForm = reactive({
+  name: '',
+  tags: [],
+  addUserLimit: 0
+})
+
+const ruleRows = reactive([])
+const ruleForm = reactive({
+  name: '',
+  field: 'from',
+  op: 'contains',
+  value: '',
+  action: 'star'
 })
 
 const noticeForm = reactive({
@@ -1201,6 +1310,107 @@ function saveS3() {
   if (s3.s3SecretKey) form.s3SecretKey = s3.s3SecretKey
 
   editSetting(form)
+}
+
+function changeStorageType(storageType) {
+  editSetting({storageType})
+}
+
+async function openTokenManager() {
+  tokenManagerShow.value = true
+  await refreshTokens()
+}
+
+async function refreshTokens() {
+  const list = await tokenList()
+  tokenRows.splice(0)
+  tokenRows.push(...(list || []))
+}
+
+async function createToken() {
+  if (!tokenForm.name) {
+    ElMessage.error('请填写名称')
+    return
+  }
+  const data = await tokenCreate({...tokenForm})
+  tokenForm.name = ''
+  tokenForm.tags = []
+  tokenForm.addUserLimit = 0
+  await refreshTokens()
+  if (data?.token) {
+    await navigator.clipboard.writeText(data.token)
+    ElMessage.success('Token 已创建并复制')
+  }
+}
+
+async function removeToken(tokenId) {
+  await tokenDelete(tokenId)
+  await refreshTokens()
+}
+
+function copyToken(token) {
+  navigator.clipboard.writeText(token)
+  ElMessage.success('已复制')
+}
+
+async function openRuleManager() {
+  ruleManagerShow.value = true
+  await refreshRules()
+}
+
+async function refreshRules() {
+  const list = await ruleList()
+  ruleRows.splice(0)
+  ruleRows.push(...(list || []))
+}
+
+async function createRule() {
+  if (!ruleForm.name || !ruleForm.value) {
+    ElMessage.error('请填写规则名称和匹配值')
+    return
+  }
+  await ruleCreate({
+    name: ruleForm.name,
+    conditions: [{field: ruleForm.field, op: ruleForm.op, value: ruleForm.value}],
+    actions: [{action: ruleForm.action}],
+    enabled: 1
+  })
+  ruleForm.name = ''
+  ruleForm.value = ''
+  await refreshRules()
+}
+
+async function removeRule(ruleId) {
+  await ruleDelete(ruleId)
+  await refreshRules()
+}
+
+async function subscribePush() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+    ElMessage.error('当前浏览器不支持 Push')
+    return
+  }
+  const {publicKey} = await pushPublicKey()
+  if (!publicKey) {
+    ElMessage.error('未配置 VAPID public key')
+    return
+  }
+  const permission = await Notification.requestPermission()
+  if (permission !== 'granted') return
+  const registration = await navigator.serviceWorker.ready
+  const subscription = await registration.pushManager.subscribe({
+    userVisibleOnly: true,
+    applicationServerKey: urlBase64ToUint8Array(publicKey)
+  })
+  await pushSubscribe(subscription)
+  ElMessage.success('已开启 Push')
+}
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4)
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/')
+  const rawData = window.atob(base64)
+  return Uint8Array.from([...rawData].map(char => char.charCodeAt(0)))
 }
 
 function tgBotSave() {

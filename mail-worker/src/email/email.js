@@ -3,6 +3,7 @@ import emailService from '../service/email-service';
 import accountService from '../service/account-service';
 import settingService from '../service/setting-service';
 import attService from '../service/att-service';
+import keyUtils from '../utils/key-utils';
 import constant from '../const/constant';
 import fileUtils from '../utils/file-utils';
 import { emailConst, isDel, settingConst } from '../const/entity-const';
@@ -11,6 +12,8 @@ import roleService from '../service/role-service';
 import userService from '../service/user-service';
 import telegramService from '../service/telegram-service';
 import aiService from '../service/ai-service';
+import ruleService from '../service/rule-service';
+import pushService from '../service/push-service';
 
 export async function email(message, env, ctx) {
 
@@ -120,7 +123,7 @@ export async function email(message, env, ctx) {
 
 		for (let item of email.attachments) {
 			let attachment = { ...item };
-			attachment.key = constant.ATTACHMENT_PREFIX + await fileUtils.getBuffHash(attachment.content) + '_' + Date.now().toString(36) + '_' + Math.random().toString(36).substring(2, 8) + fileUtils.getExtFileName(item.filename);
+			attachment.key = await keyUtils.attachmentKey(constant.ATTACHMENT_PREFIX, attachment.content, item.filename, 'receive');
 			attachment.size = item.content.length ?? item.content.byteLength;
 			attachments.push(attachment);
 			if (attachment.contentId) {
@@ -142,9 +145,13 @@ export async function email(message, env, ctx) {
 			}
 		} catch (e) {
 			console.error(e);
+			await emailService.updateStatusById({ env }, emailRow.emailId, emailConst.status.FAILED, '附件保存失败');
 		}
 
 		emailRow = await emailService.completeReceive({ env }, account ? emailConst.status.RECEIVE : emailConst.status.NOONE, emailRow.emailId);
+
+		await ruleService.applyReceiveRules({ env }, emailRow);
+		ctx.waitUntil(pushService.notifyNewEmail({ env }, emailRow));
 
 
 		if (ruleType === settingConst.ruleType.RULE) {

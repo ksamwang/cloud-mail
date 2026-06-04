@@ -26,6 +26,14 @@ export function userAdd(form) {
     return http.post('/user/add', form)
 }
 
+export function userBatchAdd(form) {
+    return http.post('/user/batchAdd', form)
+}
+
+export function userTags() {
+    return http.get('/user/tags')
+}
+
 export function userRestSendCount(userId) {
     return http.put('/user/resetSendCount', {userId})
 }
