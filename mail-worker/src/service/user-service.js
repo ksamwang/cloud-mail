@@ -426,7 +426,9 @@ const userService = {
 			`SELECT DISTINCT tag FROM user WHERE tag != '' ORDER BY tag`
 		).all();
 		return (result.results || []).map(r => r.tag);
-	}listByRegKeyId(c, regKeyId) {
+	},
+
+	listByRegKeyId(c, regKeyId) {
 		return orm(c)
 			.select({email: user.email,createTime: user.createTime})
 			.from(user)

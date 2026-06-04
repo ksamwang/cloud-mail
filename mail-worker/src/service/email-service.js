@@ -1003,11 +1003,8 @@ const emailService = {
 	async read(c, params, userId) {
 		const { emailIds } = params;
 		await orm(c).update(email).set({ unread: emailConst.unread.READ }).where(and(eq(email.userId, userId), inArray(email.emailId, emailIds)));
-	}
-};
+	},
 
-
-	
 	// 邮件会话视图：按 messageId/inReplyTo 分组
 	async threadList(c, params, userId) {
 		let { accountId, size = 50 } = params;
