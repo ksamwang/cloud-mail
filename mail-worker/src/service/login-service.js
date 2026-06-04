@@ -225,6 +225,12 @@ const loginService = {
 			throw new BizError(t('IncorrectPwd'));
 		}
 
+		// 旧格式密码自动升级为 PBKDF2
+		if (await cryptoUtils.needsRehash(userRow.password)) {
+			const { hash } = await cryptoUtils.hashPassword(password);
+			await userService.updatePasswordHash(c, userRow.userId, userRow.salt, hash);
+		}
+
 		const uuid = uuidv4();
 		const jwt = await JwtUtils.generateToken(c,{ userId: userRow.userId, token: uuid });
 

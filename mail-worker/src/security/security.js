@@ -6,7 +6,11 @@ import dayjs from 'dayjs';
 import userService from '../service/user-service';
 import permService from '../service/perm-service';
 import { t } from '../i18n/i18n'
+import { defaultRateLimit } from '../hono/rate-limit';
 import app from '../hono/hono';
+
+// 通用 API 限流 (60次/分钟)
+app.use('*', defaultRateLimit());
 
 const exclude = [
 	'/login',

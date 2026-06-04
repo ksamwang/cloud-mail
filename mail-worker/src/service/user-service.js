@@ -53,6 +53,9 @@ const userService = {
 		return user;
 	},
 
+	async updatePasswordHash(c, userId, salt, hash) {
+		await orm(c).update(user).set({ password: hash, salt }).where(eq(user.userId, userId)).run();
+	},
 
 	async resetPassword(c, params, userId) {
 

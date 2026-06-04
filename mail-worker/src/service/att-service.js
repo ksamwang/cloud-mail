@@ -152,7 +152,7 @@ const attService = {
 
 		for (let att of attList) {
 			att.buff = fileUtils.base64ToUint8Array(att.content);
-			att.key = constant.ATTACHMENT_PREFIX + await fileUtils.getBuffHash(att.buff) + fileUtils.getExtFileName(att.filename);
+			att.key = constant.ATTACHMENT_PREFIX + await fileUtils.getBuffHash(att.buff) + '_' + Date.now().toString(36) + fileUtils.getExtFileName(att.filename);
 			const attData = { userId, accountId, emailId };
 			attData.key = att.key;
 			attData.size = att.buff.length;
