@@ -1003,8 +1003,11 @@ const emailService = {
 	async read(c, params, userId) {
 		const { emailIds } = params;
 		await orm(c).update(email).set({ unread: emailConst.unread.READ }).where(and(eq(email.userId, userId), inArray(email.emailId, emailIds)));
-	},
+	}
+};
 
+
+	
 	// 邮件会话视图：按 messageId/inReplyTo 分组
 	async threadList(c, params, userId) {
 		let { accountId, size = 50 } = params;
@@ -1050,7 +1053,9 @@ const emailService = {
 		await this.emailAddAtt(c, [...threads, ...threads.flatMap(t => t.replies)]);
 
 		return { threads, total: roots.length };
-	}// FTS5 全文搜索
+	},
+
+	// FTS5 全文搜索
 	async search(c, params, userId = null) {
 		let { keyword } = params;
 		if (!keyword || !keyword.trim()) return [];
@@ -1080,4 +1085,5 @@ const emailService = {
 		await this.emailAddAtt(c, list);
 		return list;
 	}
+	};
 export default emailService;
