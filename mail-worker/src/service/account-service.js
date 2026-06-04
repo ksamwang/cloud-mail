@@ -181,6 +181,21 @@ const accountService = {
 		await orm(c).delete(account).where(inArray(account.userId,userIds)).run();
 	},
 
+	// 合并查询：一次返回用户正常/已删账号数量，替代原来的 2 次独立查询
+	async selectUserAccountCountsCombined(c, userIds) {
+		if (!userIds || userIds.length === 0) return [];
+		const result = await c.env.db.prepare(`
+			SELECT
+				user_id,
+				COUNT(CASE WHEN is_del = 0 THEN 1 END) AS account_count,
+				COUNT(CASE WHEN is_del = 1 THEN 1 END) AS del_account_count
+			FROM account
+			WHERE user_id IN (${userIds.join(',')})
+			GROUP BY user_id
+		`).all();
+		return result.results || [];
+	},
+
 	async selectUserAccountCountList(c, userIds, del = isDel.NORMAL) {
 		const result = await orm(c)
 			.select({

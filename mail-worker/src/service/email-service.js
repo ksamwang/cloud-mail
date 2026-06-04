@@ -752,6 +752,23 @@ const emailService = {
 		}).where(eq(email.resendEmailId, resendEmailId)).returning().get();
 	},
 
+	async selectUserEmailCountsCombined(c, userIds) {
+		if (!userIds || userIds.length === 0) return [];
+		const result = await c.env.db.prepare(`
+			SELECT
+				user_id,
+				COUNT(CASE WHEN type = 0 AND is_del = 0 THEN 1 END) AS receive_count,
+				COUNT(CASE WHEN type = 0 AND is_del = 1 THEN 1 END) AS del_receive_count,
+				COUNT(CASE WHEN type = 1 AND is_del = 0 THEN 1 END) AS send_count,
+				COUNT(CASE WHEN type = 1 AND is_del = 1 THEN 1 END) AS del_send_count
+			FROM email
+			WHERE user_id IN (${userIds.join(',')})
+				AND status != ${emailConst.status.SAVING}
+			GROUP BY user_id
+		`).all();
+		return result.results || [];
+	},
+
 	async selectUserEmailCountList(c, userIds, type, del = isDel.NORMAL) {
 		const result = await orm(c)
 			.select({

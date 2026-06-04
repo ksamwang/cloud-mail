@@ -35,9 +35,37 @@ const analysisService = {
 			return;
 		}
 
+		// 先同步统计数据到 stats 表
+		await this.syncStats(c);
+
 		const { keys } = await c.env.kv.list({ prefix: kvConst.ANALYSIS_ECHARTS });
 
 		await Promise.all(keys.map(key => this.refreshEchartsCacheByKey(c, key.name)));
+	},
+
+	// 同步统计数据到 stats 表，避免每次 echarts 请求全表扫描
+	async syncStats(c) {
+		const results = await c.env.db.prepare(`
+			SELECT
+				(SELECT COUNT(*) FROM email WHERE type = 0 AND status != ${emailConst.status.SAVING}) AS receiveTotal,
+				(SELECT COUNT(*) FROM email WHERE type = 1 AND status != ${emailConst.status.SAVING}) AS sendTotal,
+				(SELECT COUNT(*) FROM email WHERE type = 0 AND is_del = 1 AND status != ${emailConst.status.SAVING}) AS delReceiveTotal,
+				(SELECT COUNT(*) FROM email WHERE type = 1 AND is_del = 1 AND status != ${emailConst.status.SAVING}) AS delSendTotal,
+				(SELECT COUNT(*) FROM email WHERE type = 0 AND is_del = 0 AND status != ${emailConst.status.SAVING}) AS normalReceiveTotal,
+				(SELECT COUNT(*) FROM email WHERE type = 1 AND is_del = 0 AND status != ${emailConst.status.SAVING}) AS normalSendTotal,
+				(SELECT COUNT(*) FROM user) AS userTotal,
+				(SELECT COUNT(*) FROM user WHERE is_del = 0) AS normalUserTotal,
+				(SELECT COUNT(*) FROM user WHERE is_del = 1) AS delUserTotal,
+				(SELECT COUNT(*) FROM account) AS accountTotal,
+				(SELECT COUNT(*) FROM account WHERE is_del = 0) AS normalAccountTotal,
+				(SELECT COUNT(*) FROM account WHERE is_del = 1) AS delAccountTotal
+		`).all();
+
+		const stats = results[0];
+		// 使用 INSERT OR REPLACE 写入 stats 表
+		const entries = Object.entries(stats);
+		const placeholders = entries.map(([k, v]) => `('${k}', ${v ?? 0})`).join(', ');
+		await c.env.db.prepare(`INSERT OR REPLACE INTO stats (stat_key, stat_value) VALUES ${placeholders}`).run();
 	},
 
 	async queryEcharts(c, params) {
@@ -55,16 +83,30 @@ const analysisService = {
 		//获取时差
 		const diffHours = localDate.diff(utcDate, 'hour',true);
 
+		// 优先从 stats 表读取总数（cron 定期刷新），回退到全表扫描
+		let numberCount;
+		try {
+			const statsResult = await c.env.db.prepare(
+				`SELECT stat_key, stat_value FROM stats WHERE stat_key IN ('receiveTotal','sendTotal','delReceiveTotal','delSendTotal','normalReceiveTotal','normalSendTotal','userTotal','normalUserTotal','delUserTotal','accountTotal','normalAccountTotal','delAccountTotal')`
+			).all();
+			if (statsResult.results?.length > 0) {
+				numberCount = {};
+				statsResult.results.forEach(r => { numberCount[r.stat_key] = r.stat_value; });
+			}
+		} catch (e) { /* stats 表不存在时回退 */ }
+
+		if (!numberCount) {
+			numberCount = await analysisDao.numberCount(c);
+		}
+
 
 		const [
-			numberCount,
 			nameRatio,
 			userDayCountRaw,
 			receiveDayCountRaw,
 			sendDayCountRaw,
 			daySendTotalRaw
 		] = await Promise.all([
-			analysisDao.numberCount(c),
 
 			orm(c)
 				.select({ name: email.name, total: count() })

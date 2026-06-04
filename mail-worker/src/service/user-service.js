@@ -168,23 +168,20 @@ const userService = {
 
 		const types = [...new Set(list.map(user => user.type))];
 
-		const [emailCounts, delEmailCounts, sendCounts, delSendCounts, accountCounts, delAccountCounts, roleList] = await Promise.all([
-			emailService.selectUserEmailCountList(c, userIds, emailConst.type.RECEIVE),
-			emailService.selectUserEmailCountList(c, userIds, emailConst.type.RECEIVE, isDel.DELETE),
-			emailService.selectUserEmailCountList(c, userIds, emailConst.type.SEND),
-			emailService.selectUserEmailCountList(c, userIds, emailConst.type.SEND, isDel.DELETE),
-			accountService.selectUserAccountCountList(c, userIds),
-			accountService.selectUserAccountCountList(c, userIds, isDel.DELETE),
+		// 合并查询：7次 → 3次，减少 D1 往返
+		const [combinedEmailCounts, combinedAccountCounts, roleList] = await Promise.all([
+			emailService.selectUserEmailCountsCombined(c, userIds),
+			accountService.selectUserAccountCountsCombined(c, userIds),
 			roleService.selectByIdsHasPermKey(c, types,'email:send')
 		]);
 
-		const receiveMap = Object.fromEntries(emailCounts.map(item => [item.userId, item.count]));
-		const sendMap = Object.fromEntries(sendCounts.map(item => [item.userId, item.count]));
-		const accountMap = Object.fromEntries(accountCounts.map(item => [item.userId, item.count]));
+		const receiveMap = Object.fromEntries(combinedEmailCounts.map(item => [item.user_id, item.receive_count]));
+		const sendMap = Object.fromEntries(combinedEmailCounts.map(item => [item.user_id, item.send_count]));
+		const delReceiveMap = Object.fromEntries(combinedEmailCounts.map(item => [item.user_id, item.del_receive_count]));
+		const delSendMap = Object.fromEntries(combinedEmailCounts.map(item => [item.user_id, item.del_send_count]));
 
-		const delReceiveMap = Object.fromEntries(delEmailCounts.map(item => [item.userId, item.count]));
-		const delSendMap = Object.fromEntries(delSendCounts.map(item => [item.userId, item.count]));
-		const delAccountMap = Object.fromEntries(delAccountCounts.map(item => [item.userId, item.count]));
+		const accountMap = Object.fromEntries(combinedAccountCounts.map(item => [item.user_id, item.account_count]));
+		const delAccountMap = Object.fromEntries(combinedAccountCounts.map(item => [item.user_id, item.del_account_count]));
 
 		for (const user of list) {
 

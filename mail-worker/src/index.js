@@ -25,6 +25,9 @@ export default {
 	},
 	email: email,
 	async scheduled(c, env, ctx) {
+		// 每 30 分钟同步统计缓存
+		await analysisService.syncStats({ env });
+
 		if (c.cron === '*/30 * * * *') {
 			await analysisService.refreshEchartsCache({ env })
 			return;
