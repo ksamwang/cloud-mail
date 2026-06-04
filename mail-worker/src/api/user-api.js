@@ -4,6 +4,12 @@ import result from '../model/result';
 import userContext from '../security/user-context';
 import accountService from '../service/account-service';
 
+// 管理员批量创建用户
+app.post('/user/batchAdd', async (c) => {
+	const data = await userService.batchAdd(c, await c.req.json());
+	return c.json(result.ok(data));
+});
+
 app.delete('/user/delete', async (c) => {
 	await userService.physicsDelete(c, c.req.query());
 	return c.json(result.ok());

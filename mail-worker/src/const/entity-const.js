@@ -144,6 +144,13 @@ export const verifyRecordType = {
 }
 
 
+export const storageTypeConst = {
+	KV: 'KV',
+	R2: 'R2',
+	S3: 'S3',
+	OSS: 'OSS'
+}
+
 export const isDel = {
 	DELETE: 1,
 	NORMAL: 0

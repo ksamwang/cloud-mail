@@ -366,7 +366,60 @@ const userService = {
 
 	},
 
-	listByRegKeyId(c, regKeyId) {
+	
+	// 管理员批量创建用户
+	async batchAdd(c, params) {
+		const { prefix, domain, count, password, roleName } = params;
+
+		if (!c.env.domain.includes(domain)) {
+			throw new BizError(t('notEmailDomain'));
+		}
+
+		if (!password || password.length < 6) {
+			throw new BizError(t('pwdMinLength'));
+		}
+
+		if (!count || count < 1 || count > 100) {
+			throw new BizError(t('批量创建数量需在 1-100 之间'));
+		}
+
+		const { salt, hash } = await saltHashUtils.hashPassword(password);
+
+		// 获取身份列表
+		const roleList = await roleService.roleSelectUse(c);
+		const defRole = roleList.find(r => r.isDefault === roleConst.isDefault.OPEN);
+		let type = defRole ? defRole.roleId : null;
+
+		if (roleName) {
+			const matched = roleList.find(r => r.name === roleName);
+			if (matched) type = matched.roleId;
+		}
+
+		if (!type) {
+			const firstRole = roleList[0];
+			if (firstRole) type = firstRole.roleId;
+		}
+
+		const results = [];
+		const timestamp = Date.now().toString(36);
+
+		for (let i = 0; i < count; i++) {
+			const suffix = timestamp + i.toString(36);
+			const email = `${prefix}${suffix}@${domain}`.toLowerCase();
+
+			// 跳过已存在的
+			const existAccount = await accountService.selectByEmailIncludeDel(c, email);
+			if (existAccount) continue;
+
+			const userId = await this.insert(c, { email, password: hash, salt, type });
+			await accountService.insert(c, { userId, email, name: emailUtils.getName(email) });
+			await this.updateUserInfo(c, userId, true);
+
+			results.push({ email, password });
+		}
+
+		return results;
+	}listByRegKeyId(c, regKeyId) {
 		return orm(c)
 			.select({email: user.email,createTime: user.createTime})
 			.from(user)

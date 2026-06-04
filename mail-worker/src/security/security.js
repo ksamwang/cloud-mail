@@ -57,6 +57,7 @@ const requirePerms = [
 	'/user/restore',
 	'/user/resetSendCount',
 	'/user/add',
+		'/user/batchAdd',
 	'/user/deleteAccount',
 	'/user/allAccount',
 	'/regKey/add',

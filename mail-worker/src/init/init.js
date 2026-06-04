@@ -32,6 +32,7 @@ const dbInit = {
 		await this.v3_1DB(c);
 		await this.v3_2DB(c);
 		await this.v3_3DB(c);
+		await this.v3_4DB(c);
 		await settingService.refresh(c);
 		return c.text('success');
 	},
@@ -44,7 +45,17 @@ const dbInit = {
 		}
 	},
 
-	async v3_3DB(c) {
+	async v3_4DB(c) {
+	try {
+		await c.env.db.prepare(
+			`ALTER TABLE setting ADD COLUMN storage_type TEXT NOT NULL DEFAULT '';`
+		).run();
+	} catch (e) {
+		console.warn(`跳过字段：${e.message}`);
+	}
+},
+
+async v3_3DB(c) {
 	try {
 		await c.env.db.prepare(`
 			CREATE VIRTUAL TABLE IF NOT EXISTS email_fts USING fts5(
@@ -101,7 +112,7 @@ const dbInit = {
 	} catch (e) { console.warn(`FTS5 回填失败：${e.message}`); }
 },
 
-async v3_2DB(c) {async v3_2DB(c) {
+async v3_2DB(c) {
 	try {
 		await c.env.db.prepare(`
 			CREATE TABLE IF NOT EXISTS stats (
