@@ -118,6 +118,7 @@ app.use('*', async (c, next) => {
 	if (path.startsWith('/public')) {
 
 		// 从 api_token 表校验 Token（替换旧 KV 单 Token）
+		const publicToken = c.req.header(constant.TOKEN_HEADER);
 		const tokenService = await import('../service/token-service.js');
 		const tokenRow = await tokenService.default.validate(c, publicToken);
 		if (!tokenRow) {

@@ -419,7 +419,8 @@ const userService = {
 		}
 
 		return results;
-	}
+	},
+
 	// 获取所有已使用的 distinct tag 列表
 	async getDistinctTags(c) {
 		const result = await c.env.db.prepare(
