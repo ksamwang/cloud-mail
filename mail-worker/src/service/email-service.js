@@ -1006,4 +1006,81 @@ const emailService = {
 	}
 };
 
+
+	
+	// 邮件会话视图：按 messageId/inReplyTo 分组
+	async threadList(c, params, userId) {
+		let { accountId, size = 50 } = params;
+		size = Number(size);
+		accountId = Number(accountId);
+
+		const emails = await orm(c).select().from(email).where(
+			and(
+				eq(email.userId, userId),
+				eq(email.isDel, isDel.NORMAL),
+				eq(email.accountId, accountId),
+				eq(email.type, emailConst.type.RECEIVE)
+			))
+			.orderBy(desc(email.emailId))
+			.limit(size * 5).all();
+
+		if (emails.length === 0) return { threads: [], total: 0 };
+
+		// 构建 messageId → 子邮件 映射
+		const replyMap = {};
+		const emailMap = {};
+		for (const e of emails) {
+			emailMap[e.messageId] = e;
+			if (e.inReplyTo) {
+				if (!replyMap[e.inReplyTo]) replyMap[e.inReplyTo] = [];
+				if (!replyMap[e.inReplyTo].some(r => r.emailId === e.emailId)) {
+					replyMap[e.inReplyTo].push(e);
+				}
+			}
+		}
+
+		// 构建线程树：根邮件是那些没有 inReplyTo 或引用的邮件不在列表中的
+		const roots = emails.filter(e =>
+			!e.inReplyTo || !emailMap[e.inReplyTo]
+		);
+
+		// 每个根邮件携带回复链
+		const threads = roots.slice(0, size).map(root => ({
+			...root,
+			replies: (replyMap[root.messageId] || []).slice(0, 50)
+		}));
+
+		await this.emailAddAtt(c, [...threads, ...threads.flatMap(t => t.replies)]);
+
+		return { threads, total: roots.length };
+	}// FTS5 全文搜索
+	async search(c, params, userId = null) {
+		let { keyword } = params;
+		if (!keyword || !keyword.trim()) return [];
+
+		// 转义 FTS5 特殊字符
+		keyword = keyword.replace(/["*()^~:]/g, '').trim();
+		if (!keyword) return [];
+
+		// 构建 FTS5 多词 AND 匹配
+		const searchTerm = keyword.split(/\s+/).map(k => `"${k}"`).join(' AND ');
+
+		const conditions = [`email_fts MATCH '${searchTerm}'`];
+		if (userId !== null) {
+			conditions.push(`e.user_id = ${userId}`);
+		}
+		conditions.push(`e.is_del = ${isDel.NORMAL}`);
+
+		const result = await c.env.db.prepare(`
+			SELECT e.* FROM email e
+			INNER JOIN email_fts fts ON e.email_id = fts.rowid
+			WHERE ${conditions.join(' AND ')}
+			ORDER BY rank
+			LIMIT 50
+		`).all();
+
+		const list = result.results || [];
+		await this.emailAddAtt(c, list);
+		return list;
+	}
 export default emailService;

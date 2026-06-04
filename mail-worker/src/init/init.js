@@ -31,6 +31,7 @@ const dbInit = {
 		await this.v3_0DB(c);
 		await this.v3_1DB(c);
 		await this.v3_2DB(c);
+		await this.v3_3DB(c);
 		await settingService.refresh(c);
 		return c.text('success');
 	},
@@ -43,7 +44,64 @@ const dbInit = {
 		}
 	},
 
-	async v3_2DB(c) {
+	async v3_3DB(c) {
+	try {
+		await c.env.db.prepare(`
+			CREATE VIRTUAL TABLE IF NOT EXISTS email_fts USING fts5(
+				subject, content, text, send_email, to_email, code,
+				content='email',
+				content_rowid='email_id'
+			)
+		`).run();
+	} catch (e) {
+		console.warn(`FTS5 表创建失败：${e.message}`);
+		return;
+	}
+
+	// 触发器：插入时自动同步
+	try {
+		await c.env.db.prepare(`
+			CREATE TRIGGER IF NOT EXISTS email_fts_ai AFTER INSERT ON email BEGIN
+				INSERT INTO email_fts(rowid, subject, content, text, send_email, to_email, code)
+				VALUES (new.email_id, new.subject, new.content, new.text, new.send_email, new.to_email, new.code);
+			END
+		`).run();
+	} catch (e) { console.warn(`FTS5 触发器 ai 创建失败：${e.message}`); }
+
+	// 触发器：删除时自动同步
+	try {
+		await c.env.db.prepare(`
+			CREATE TRIGGER IF NOT EXISTS email_fts_ad AFTER DELETE ON email BEGIN
+				INSERT INTO email_fts(email_fts, rowid, subject, content, text, send_email, to_email, code)
+				VALUES ('delete', old.email_id, old.subject, old.content, old.text, old.send_email, old.to_email, old.code);
+			END
+		`).run();
+	} catch (e) { console.warn(`FTS5 触发器 ad 创建失败：${e.message}`); }
+
+	// 触发器：更新时自动同步
+	try {
+		await c.env.db.prepare(`
+			CREATE TRIGGER IF NOT EXISTS email_fts_au AFTER UPDATE ON email BEGIN
+				INSERT INTO email_fts(email_fts, rowid, subject, content, text, send_email, to_email, code)
+				VALUES ('delete', old.email_id, old.subject, old.content, old.text, old.send_email, old.to_email, old.code);
+				INSERT INTO email_fts(rowid, subject, content, text, send_email, to_email, code)
+				VALUES (new.email_id, new.subject, new.content, new.text, new.send_email, new.to_email, new.code);
+			END
+		`).run();
+	} catch (e) { console.warn(`FTS5 触发器 au 创建失败：${e.message}`); }
+
+	// 回填已有数据
+	try {
+		await c.env.db.prepare(`
+			INSERT INTO email_fts(rowid, subject, content, text, send_email, to_email, code)
+			SELECT email_id, subject, content, text, send_email, to_email, code
+			FROM email
+			WHERE email_id NOT IN (SELECT rowid FROM email_fts)
+		`).run();
+	} catch (e) { console.warn(`FTS5 回填失败：${e.message}`); }
+},
+
+async v3_2DB(c) {async v3_2DB(c) {
 	try {
 		await c.env.db.prepare(`
 			CREATE TABLE IF NOT EXISTS stats (

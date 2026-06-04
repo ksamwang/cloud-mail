@@ -4,6 +4,18 @@ import result from '../model/result';
 import userContext from '../security/user-context';
 import attService from '../service/att-service';
 
+// FTS5 全文搜索
+// 邮件会话视图
+app.get('/email/threads', async (c) => {
+	const data = await emailService.threadList(c, c.req.query(), userContext.getUserId(c));
+	return c.json(result.ok(data));
+});
+
+app.get('/email/search', async (c) => {
+	const list = await emailService.search(c, c.req.query(), userContext.getUserId(c));
+	return c.json(result.ok(list));
+});
+
 app.get('/email/list', async (c) => {
 	const data = await emailService.list(c, c.req.query(), userContext.getUserId(c));
 	return c.json(result.ok(data));

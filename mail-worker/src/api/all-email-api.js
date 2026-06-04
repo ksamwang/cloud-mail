@@ -2,6 +2,12 @@ import app from '../hono/hono';
 import emailService from '../service/email-service';
 import result from '../model/result';
 
+// FTS5 全文搜索（管理员）
+app.get('/allEmail/search', async (c) => {
+	const list = await emailService.search(c, c.req.query());
+	return c.json(result.ok(list));
+});
+
 app.get('/allEmail/list', async (c) => {
 	const data = await emailService.allList(c, c.req.query());
 	return c.json(result.ok(data));
