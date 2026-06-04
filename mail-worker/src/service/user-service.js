@@ -419,6 +419,13 @@ const userService = {
 		}
 
 		return results;
+	}
+	// 获取所有已使用的 distinct tag 列表
+	async getDistinctTags(c) {
+		const result = await c.env.db.prepare(
+			`SELECT DISTINCT tag FROM user WHERE tag != '' ORDER BY tag`
+		).all();
+		return (result.results || []).map(r => r.tag);
 	}listByRegKeyId(c, regKeyId) {
 		return orm(c)
 			.select({email: user.email,createTime: user.createTime})

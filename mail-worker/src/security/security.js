@@ -64,6 +64,10 @@ const requirePerms = [
 	'/regKey/list',
 	'/regKey/delete',
 	'/regKey/clearNotUse',
+		'/token/create',
+		'/token/list',
+		'/token/update',
+		'/token/delete',
 	'/regKey/history'
 ];
 
@@ -93,6 +97,10 @@ const premKey = {
 	'reg-key:add': ['/regKey/add'],
 	'reg-key:query': ['/regKey/list','/regKey/history'],
 	'reg-key:delete': ['/regKey/delete','/regKey/clearNotUse'],
+		'api-token:query': ['/token/list'],
+		'api-token:add': ['/token/create'],
+		'api-token:set': ['/token/update'],
+		'api-token:delete': ['/token/delete'],
 };
 
 app.use('*', async (c, next) => {
@@ -109,11 +117,22 @@ app.use('*', async (c, next) => {
 
 	if (path.startsWith('/public')) {
 
-		const userPublicToken = await c.env.kv.get(KvConst.PUBLIC_KEY);
-		const publicToken = c.req.header(constant.TOKEN_HEADER);
-		if (publicToken !== userPublicToken) {
+		// 从 api_token 表校验 Token（替换旧 KV 单 Token）
+		const tokenService = await import('../service/token-service.js');
+		const tokenRow = await tokenService.default.validate(c, publicToken);
+		if (!tokenRow) {
 			throw new BizError(t('publicTokenFail'), 401);
 		}
+		// 注入上下文：标签范围、配额
+		const tokenTags = tokenRow.tags ? tokenRow.tags.split(',').map(t => t.trim()).filter(Boolean) : [];
+		c.set('tokenTags', tokenTags);
+		c.set('tokenId', tokenRow.tokenId);
+		c.set('tokenAddUserLimit', tokenRow.addUserLimit);
+		c.set('tokenAddUserUsed', tokenRow.addUserUsed);
+		// 异步更新最近使用时间
+		c.executionCtx.waitUntil(
+			tokenService.default.recordUsage(c, tokenRow.tokenId)
+		);
 		return await next();
 	}
 

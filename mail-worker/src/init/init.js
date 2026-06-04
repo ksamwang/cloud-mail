@@ -33,6 +33,7 @@ const dbInit = {
 		await this.v3_2DB(c);
 		await this.v3_3DB(c);
 		await this.v3_4DB(c);
+		await this.v3_5DB(c);
 		await settingService.refresh(c);
 		return c.text('success');
 	},
@@ -45,7 +46,33 @@ const dbInit = {
 		}
 	},
 
-	async v3_4DB(c) {
+	async v3_5DB(c) {
+	try {
+		await c.env.db.prepare(`ALTER TABLE user ADD COLUMN tag TEXT NOT NULL DEFAULT '';`).run();
+	} catch (e) {
+		console.warn(`跳过字段：${e.message}`);
+	}
+
+	try {
+		await c.env.db.prepare(`
+			CREATE TABLE IF NOT EXISTS api_token (
+				token_id INTEGER PRIMARY KEY AUTOINCREMENT,
+				name TEXT NOT NULL DEFAULT '',
+				token TEXT NOT NULL UNIQUE,
+				tags TEXT NOT NULL DEFAULT '',
+				add_user_limit INTEGER NOT NULL DEFAULT 0,
+				add_user_used INTEGER NOT NULL DEFAULT 0,
+				enabled INTEGER NOT NULL DEFAULT 1,
+				create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+				last_used_time DATETIME
+			)
+		`).run();
+	} catch (e) {
+		console.warn(`api_token 表创建失败：${e.message}`);
+	}
+},
+
+async v3_4DB(c) {
 	try {
 		await c.env.db.prepare(
 			`ALTER TABLE setting ADD COLUMN storage_type TEXT NOT NULL DEFAULT '';`
