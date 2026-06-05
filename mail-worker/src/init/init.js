@@ -642,6 +642,11 @@ async v3_0DB(c) {
 
 		await c.env.db.prepare(`UPDATE perm SET perm_key = 'setting:clean' WHERE perm_key = 'seting:clear'`).run();
 		await c.env.db.prepare(`DELETE FROM perm WHERE perm_key = 'user:star'`).run();
+		await c.env.db.prepare(`
+			INSERT INTO perm (name, perm_key, pid, type, sort)
+			SELECT '标签修改', 'user:set-tag', 6, 2, 5
+			WHERE NOT EXISTS (SELECT 1 FROM perm WHERE perm_key = 'user:set-tag')
+		`).run();
 		// 创建 role 表并插入默认身份
 		await c.env.db.prepare(`
       CREATE TABLE IF NOT EXISTS role (

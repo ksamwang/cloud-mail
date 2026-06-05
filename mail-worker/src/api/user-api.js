@@ -30,6 +30,11 @@ app.put('/user/setType', async (c) => {
 	return c.json(result.ok());
 });
 
+app.put('/user/setTag', async (c) => {
+	await userService.setTag(c, await c.req.json());
+	return c.json(result.ok());
+});
+
 app.get('/user/list', async (c) => {
 	const data = await userService.list(c, c.req.query(), userContext.getUserId(c));
 	return c.json(result.ok(data));

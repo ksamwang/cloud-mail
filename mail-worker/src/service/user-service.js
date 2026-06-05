@@ -318,6 +318,21 @@ const userService = {
 
 	},
 
+	async setTag(c, params) {
+		const { userId } = params;
+		const tag = (params.tag || '').trim();
+
+		if (!userId) {
+			throw new BizError(t('notExistUser'));
+		}
+
+		await orm(c)
+			.update(user)
+			.set({ tag })
+			.where(eq(user.userId, userId))
+			.run();
+	},
+
 	async incrUserSendCount(c, quantity, userId) {
 		await orm(c).update(user).set({
 			sendCount: sql`${user.sendCount}
@@ -337,6 +352,7 @@ const userService = {
 	async add(c, params) {
 
 		const { email, type, password } = params;
+		const tag = (params.tag || '').trim();
 
 		if (!c.env.domain.includes(emailUtils.getDomain(email))) {
 			throw new BizError(t('notEmailDomain'));
@@ -364,7 +380,7 @@ const userService = {
 
 		const { salt, hash } = await saltHashUtils.hashPassword(password);
 
-		const userId = await userService.insert(c, { email, password: hash, salt, type });
+		const userId = await userService.insert(c, { email, password: hash, salt, type, tag });
 
 		await userService.updateUserInfo(c, userId, true);
 
@@ -402,6 +418,8 @@ const userService = {
 	// 管理员批量创建用户
 	async batchAdd(c, params) {
 		const { prefix, domain, count, password, roleName } = params;
+		const tag = (params.tag || '').trim();
+		const emailPrefix = (prefix || '').trim();
 
 		if (!c.env.domain.includes(domain)) {
 			throw new BizError(t('notEmailDomain'));
@@ -436,14 +454,14 @@ const userService = {
 		const timestamp = Date.now().toString(36);
 
 		for (let i = 0; i < count; i++) {
-			const suffix = timestamp + i.toString(36);
-			const email = `${prefix}${suffix}@${domain}`.toLowerCase();
+			const suffix = emailPrefix ? timestamp + i.toString(36) : saltHashUtils.genRandomPwd(10).toLowerCase();
+			const email = `${emailPrefix}${suffix}@${domain}`.toLowerCase();
 
 			// 跳过已存在的
 			const existAccount = await accountService.selectByEmailIncludeDel(c, email);
 			if (existAccount) continue;
 
-			const userId = await this.insert(c, { email, password: hash, salt, type });
+			const userId = await this.insert(c, { email, password: hash, salt, type, tag });
 			await accountService.insert(c, { userId, email, name: emailUtils.getName(email) });
 			await this.updateUserInfo(c, userId, true);
 

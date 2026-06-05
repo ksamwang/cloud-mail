@@ -82,6 +82,12 @@
               </div>
             </template>
           </el-table-column>
+          <el-table-column v-if="tagShow" label="标签" min-width="110" prop="tag">
+            <template #default="props">
+              <el-tag v-if="props.row.tag" type="success" disable-transitions>{{ props.row.tag }}</el-tag>
+              <span v-else>-</span>
+            </template>
+          </el-table-column>
           <el-table-column :label="$t('tabSetting')" :width="settingWidth">
             <template #default="props">
               <el-button size="small" type="primary" v-if="(props.row.type === 0 && userStore.user.type !== 0)" >{{ $t('action') }}</el-button>
@@ -91,6 +97,7 @@
                   <el-dropdown-menu>
                     <el-dropdown-item @click="openSetPwd(props.row)" >{{ $t('chgPwd') }}</el-dropdown-item>
                     <el-dropdown-item @click="openSetType(props.row)" >{{ $t('perm') }}</el-dropdown-item>
+                    <el-dropdown-item @click="openSetTag(props.row)" >标签</el-dropdown-item>
                     <template v-if="props.row.type !== 0">
                       <el-dropdown-item v-if="props.row.isDel !== 1" @click="setStatus(props.row)">
                         {{ setStatusName(props.row) }}
@@ -154,6 +161,14 @@
         </el-button>
       </div>
     </el-dialog>
+    <el-dialog class="dialog" v-model="setTagShow" title="设置标签" @closed="resetUserForm">
+      <div class="dialog-box">
+        <el-input v-model="userForm.tag" placeholder="用户标签" clearable/>
+        <el-button class="btn" :loading="settingLoading" type="primary" @click="setTag">
+          {{ $t('save') }}
+        </el-button>
+      </div>
+    </el-dialog>
     <el-dialog v-model="showAdd" :title="$t('addUser')">
       <div class="container">
         <el-input v-model="addForm.email" type="text" :placeholder="$t('emailAccount')" autocomplete="off">
@@ -183,6 +198,7 @@
         <el-select v-model="addForm.type" :placeholder="$t('perm')">
           <el-option v-for="item in roleList" :label="item.name" :value="item.roleId" :key="item.roleId"/>
         </el-select>
+        <el-input v-model="addForm.tag" placeholder="用户标签" clearable/>
         <el-button class="btn" type="primary" @click="submit" :loading="addLoading"
         >{{ $t('add') }}
         </el-button>
@@ -199,6 +215,7 @@
         <el-select v-model="batchForm.roleName" placeholder="身份">
           <el-option v-for="item in roleList" :label="item.name" :value="item.name" :key="item.roleId"/>
         </el-select>
+        <el-input v-model="batchForm.tag" placeholder="用户标签" clearable/>
         <el-button class="btn" type="primary" :loading="batchLoading" @click="submitBatchAdd">创建</el-button>
         <el-table v-if="batchResults.length" :data="batchResults" height="240">
           <el-table-column prop="email" label="邮箱"/>
@@ -267,6 +284,9 @@
         </div>
         <div v-if="!typeShow"><span class="details-item-title">{{ $t('perm') }}:</span>
           {{ toRoleName(userDetails.type) }}
+        </div>
+        <div v-if="!tagShow">
+          <span class="details-item-title">标签:</span>{{ userDetails.tag || '-' }}
         </div>
         <div v-if="!statusShow">
           <span class="details-item-title">{{ $t('tabStatus') }}:</span>
@@ -341,6 +361,14 @@
               </div>
             </template>
           </el-dropdown-item>
+          <el-dropdown-item @click="openSetTag(rightClickUser)">
+            <template #default>
+              <div class="right-dropdown-item">
+                <Icon icon="fluent:tag-24-regular" width="20" height="20" />
+                <span>设置标签</span>
+              </div>
+            </template>
+          </el-dropdown-item>
           <el-dropdown-item v-if="rightClickUser.type !== 0">
             <template #default>
               <div class="right-dropdown-item" v-if="rightClickUser.isDel !== 1" @click="setStatus(rightClickUser)" >
@@ -392,6 +420,7 @@ import {
   userSetPwd,
   userSetStatus,
   userSetType,
+  userSetTag,
   userAdd,
   userBatchAdd,
   userRestSendCount,
@@ -428,6 +457,7 @@ const accountNumShow = ref(true)
 const createTimeShow = ref(true)
 const statusShow = ref(true)
 const typeShow = ref(true)
+const tagShow = ref(true)
 const receiveWidth = ref(null)
 const phonePageShow = ref(false)
 const detailsShow = ref(false);
@@ -462,6 +492,7 @@ const addForm = reactive({
   suffix: settingStore.domainList[0],
   password: '',
   type: null,
+  tag: '',
 })
 
 const batchForm = reactive({
@@ -469,7 +500,8 @@ const batchForm = reactive({
   domain: settingStore.domainList[0]?.replace('@', '') || '',
   count: 10,
   password: '',
-  roleName: ''
+  roleName: '',
+  tag: ''
 })
 
 const params = reactive({
@@ -483,12 +515,14 @@ let chooseUser = {}
 const userForm = reactive({
   password: null,
   type: -1,
+  tag: '',
   userId: 0,
 })
 
 const showAdd = ref(false)
 const showBatchAdd = ref(false)
 const accountShow = ref(false)
+const setTagShow = ref(false)
 const addLoading = ref(false);
 const batchLoading = ref(false);
 const batchResults = reactive([])
@@ -717,6 +751,7 @@ function resetAddForm() {
   addForm.suffix = settingStore.domainList[0]
   addForm.type = null
   addForm.password = ''
+  addForm.tag = ''
 }
 
 function openAdd() {
@@ -733,12 +768,13 @@ function resetBatchAddForm() {
   batchForm.count = 10
   batchForm.password = ''
   batchForm.roleName = ''
+  batchForm.tag = ''
   batchResults.splice(0)
 }
 
 async function submitBatchAdd() {
-  if (!batchForm.prefix || !batchForm.domain || !batchForm.password) {
-    ElMessage.error('请填写前缀、域名和密码')
+  if (!batchForm.domain || !batchForm.password) {
+    ElMessage.error('请填写域名和密码')
     return
   }
   batchLoading.value = true
@@ -978,9 +1014,27 @@ function setType() {
   })
 }
 
+function setTag() {
+  const tag = (userForm.tag || '').trim()
+  settingLoading.value = true
+  userSetTag({tag, userId: userForm.userId}).then(() => {
+    chooseUser.tag = tag
+    setTagShow.value = false
+    ElMessage({
+      message: t('saveSuccessMsg'),
+      type: "success",
+      plain: true
+    })
+  }).finally(() => {
+    settingLoading.value = false
+  })
+}
+
 
 function resetUserForm() {
   userForm.password = null
+  userForm.type = -1
+  userForm.tag = ''
   userForm.userId = 0
 }
 
@@ -1027,6 +1081,13 @@ function openSetType(user) {
   userForm.userId = user.userId
   userForm.type = user.type
   setTypeShow.value = true
+}
+
+function openSetTag(user) {
+  chooseUser = user
+  userForm.userId = user.userId
+  userForm.tag = user.tag || ''
+  setTagShow.value = true
 }
 
 function openSetPwd(user) {
@@ -1096,6 +1157,7 @@ function adjustWidth() {
   accountNumShow.value = width > 650
   sendNumShow.value = width > 685
   typeShow.value = width > 767
+  tagShow.value = width > 900
   emailWidth.value = width > 480 ? 230 : null
   settingWidth.value = width < 480 ? (locale.value === 'en' ? 85 : 75) : null
   expandWidth.value = width < 480 ? 30 : 35

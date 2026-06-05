@@ -16,16 +16,6 @@
         <h1>{{ settingStore.settings.title }}</h1>
         <p>{{ show === 'login' ? $t('loginBtn') : $t('regBtn') }}</p>
       </div>
-      <div class="status-strip">
-        <div>
-          <span>{{ $t('emailAccount') }}</span>
-          <strong>{{ domainList.length }}</strong>
-        </div>
-        <div>
-          <span>{{ $t('password') }}</span>
-          <strong>PBKDF2</strong>
-        </div>
-      </div>
     </section>
     <section class="auth-panel">
       <div class="container">
@@ -722,37 +712,6 @@ function submitRegister() {
     h1 {
       font-size: 30px;
     }
-  }
-}
-
-.status-strip {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 180px));
-  gap: 12px;
-
-  > div {
-    min-height: 74px;
-    border: 1px solid rgba(72, 91, 112, 0.16);
-    background: rgba(255, 255, 255, 0.62);
-    border-radius: 8px;
-    padding: 14px;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-  }
-
-  span {
-    color: #657487;
-    font-size: 12px;
-  }
-
-  strong {
-    color: #102033;
-    font-size: 18px;
-  }
-
-  @media (max-width: 767px) {
-    display: none;
   }
 }
 

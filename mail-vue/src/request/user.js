@@ -17,6 +17,10 @@ export function userSetType(params) {
     return http.put('/user/setType', params)
 }
 
+export function userSetTag(params) {
+    return http.put('/user/setTag', params)
+}
+
 
 export function userDelete(userIds) {
     return http.delete('/user/delete', {params:{userIds: userIds + ''}})
