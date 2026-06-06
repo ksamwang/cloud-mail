@@ -17,6 +17,8 @@ import pushService from '../service/push-service';
 
 export async function email(message, env, ctx) {
 
+	let persisted = false;
+
 	try {
 
 		const {
@@ -132,6 +134,7 @@ export async function email(message, env, ctx) {
 		}
 
 		let emailRow = await emailService.receive({ env }, params, cidAttachments, r2Domain);
+		persisted = true;
 
 		attachments.forEach(attachment => {
 			attachment.emailId = emailRow.emailId;
@@ -150,8 +153,8 @@ export async function email(message, env, ctx) {
 
 		emailRow = await emailService.completeReceive({ env }, account ? emailConst.status.RECEIVE : emailConst.status.NOONE, emailRow.emailId);
 
-		await ruleService.applyReceiveRules({ env }, emailRow);
-		ctx.waitUntil(pushService.notifyNewEmail({ env }, emailRow));
+		await runPostReceiveTask('邮件规则执行失败', () => ruleService.applyReceiveRules({ env }, emailRow));
+		ctx.waitUntil(runPostReceiveTask('Web Push 通知失败', () => pushService.notifyNewEmail({ env }, emailRow)));
 
 
 		if (ruleType === settingConst.ruleType.RULE) {
@@ -166,7 +169,7 @@ export async function email(message, env, ctx) {
 
 		//转发到TG
 		if (tgBotStatus === settingConst.tgBotStatus.OPEN && tgChatId) {
-			await telegramService.sendEmailToBot({ env }, emailRow)
+			await runPostReceiveTask('Telegram 通知失败', () => telegramService.sendEmailToBot({ env }, emailRow))
 		}
 
 		//转发到其他邮箱
@@ -188,7 +191,18 @@ export async function email(message, env, ctx) {
 
 	} catch (e) {
 		console.error('邮件接收异常: ', e);
+		if (persisted) {
+			return;
+		}
 		throw e
+	}
+}
+
+async function runPostReceiveTask(message, task) {
+	try {
+		return await task();
+	} catch (e) {
+		console.error(message, e);
 	}
 }
 
