@@ -18,6 +18,7 @@ import { t } from '../i18n/i18n'
 import reqUtils from '../utils/req-utils';
 import {oauth} from "../entity/oauth";
 import oauthService from "./oauth-service";
+import { generateEmailLocalName } from '../utils/random-name';
 
 const userService = {
 
@@ -452,9 +453,10 @@ const userService = {
 
 		const results = [];
 		const timestamp = Date.now().toString(36);
+		const maxAttempts = count * 10;
 
-		for (let i = 0; i < count; i++) {
-			const suffix = emailPrefix ? timestamp + i.toString(36) : saltHashUtils.genRandomPwd(10).toLowerCase();
+		for (let i = 0; results.length < count && i < maxAttempts; i++) {
+			const suffix = emailPrefix ? timestamp + i.toString(36) : generateEmailLocalName();
 			const email = `${emailPrefix}${suffix}@${domain}`.toLowerCase();
 
 			// 跳过已存在的
