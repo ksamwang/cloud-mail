@@ -21,7 +21,8 @@ const exclude = [
 	'/init',
 	'/telegram',
 	'/test',
-	'/oauth'
+	'/oauth',
+	'/getMail'
 ];
 
 const requirePerms = [
@@ -58,6 +59,7 @@ const requirePerms = [
 	'/user/resetSendCount',
 	'/user/add',
 		'/user/batchAdd',
+		'/user/batchUpdateGetMailToken',
 	'/user/deleteAccount',
 	'/user/allAccount',
 	'/regKey/add',
@@ -87,7 +89,7 @@ const premKey = {
 	'role:query': ['/role/list', '/role/tree'],
 	'role:delete': ['/role/delete'],
 	'user:query': ['/user/list','/user/allAccount'],
-	'user:add': ['/user/add'],
+	'user:add': ['/user/add', '/user/batchAdd', '/user/batchUpdateGetMailToken'],
 	'user:reset-send': ['/user/resetSendCount'],
 	'user:set-pwd': ['/user/setPwd'],
 	'user:set-status': ['/user/setStatus', '/user/restore'],

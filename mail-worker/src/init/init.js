@@ -35,8 +35,39 @@ const dbInit = {
 		await this.v3_4DB(c);
 		await this.v3_5DB(c);
 		await this.v3_6DB(c);
+		await this.v3_7DB(c);
 		await settingService.refresh(c);
 		return c.text('success');
+	},
+
+	async v3_7DB(c) {
+		try {
+			await c.env.db.prepare(`
+				CREATE TABLE IF NOT EXISTS mail_access_token (
+					token_id INTEGER PRIMARY KEY AUTOINCREMENT,
+					user_id INTEGER NOT NULL,
+					account_id INTEGER NOT NULL,
+					email TEXT NOT NULL,
+					token TEXT NOT NULL UNIQUE,
+					expire_time DATETIME,
+					enabled INTEGER NOT NULL DEFAULT 1,
+					used_count INTEGER NOT NULL DEFAULT 0,
+					create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+					last_used_time DATETIME
+				)
+			`).run();
+		} catch (e) {
+			console.warn(`mail_access_token 表创建失败：${e.message}`);
+		}
+
+		try {
+			await c.env.db.prepare(`
+				CREATE INDEX IF NOT EXISTS idx_mail_access_token_account
+				ON mail_access_token(user_id, account_id, email)
+			`).run();
+		} catch (e) {
+			console.warn(`mail_access_token 索引创建失败：${e.message}`);
+		}
 	},
 
 	async v3_1DB(c) {

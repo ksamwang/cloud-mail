@@ -60,6 +60,14 @@ const routes = [
         component: () => import('@/views/login/index.vue')
     },
     {
+        path: '/get_mail',
+        name: 'get-mail',
+        component: () => import('@/views/get-mail/index.vue'),
+        meta: {
+            public: true
+        }
+    },
+    {
         path: '/test',
         name: 'test',
         component: () => import('@/views/test/index.vue')
@@ -99,6 +107,11 @@ router.beforeEach((to, from, next) => {
     }
 
     const token = localStorage.getItem('token')
+
+    if (to.meta.public) {
+        next()
+        return
+    }
 
     if (!token && to.name !== 'login') {
         return next({name: 'login'})

@@ -34,6 +34,10 @@ export function userBatchAdd(form) {
     return http.post('/user/batchAdd', form)
 }
 
+export function userBatchUpdateGetMailToken(form) {
+    return http.post('/user/batchUpdateGetMailToken', form)
+}
+
 export function userTags() {
     return http.get('/user/tags')
 }

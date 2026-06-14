@@ -23,4 +23,5 @@ import '../api/oauth-api'
 import '../api/token-api'
 import '../api/rule-api'
 import '../api/push-api'
+import '../api/get-mail-api'
 export default app;

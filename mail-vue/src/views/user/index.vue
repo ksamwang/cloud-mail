@@ -3,6 +3,7 @@
     <div class="header-actions">
       <Icon class="icon" icon="ion:add-outline" width="23" height="23" @click="openAdd"/>
       <Icon class="icon" icon="fluent:people-add-24-regular" width="22" height="22" @click="openBatchAdd"/>
+      <Icon class="icon" icon="fluent:key-24-regular" width="22" height="22" @click="openBatchTokenUpdate"/>
       <div class="search">
         <el-input
             v-model="params.email"
@@ -216,12 +217,50 @@
           <el-option v-for="item in roleList" :label="item.name" :value="item.name" :key="item.roleId"/>
         </el-select>
         <el-input v-model="batchForm.tag" placeholder="用户标签" clearable/>
+        <el-switch v-model="batchForm.generateGetMailToken" active-text="同步生成取件链接"/>
+        <el-input-number
+            v-if="batchForm.generateGetMailToken"
+            v-model="batchForm.tokenExpireDays"
+            :min="0"
+            :max="3650"
+        />
+        <div v-if="batchForm.generateGetMailToken" class="form-tip">令牌有效期，0 表示永久有效</div>
         <el-button class="btn" type="primary" :loading="batchLoading" @click="submitBatchAdd">创建</el-button>
         <el-table v-if="batchResults.length" :data="batchResults" height="240">
           <el-table-column prop="email" label="邮箱"/>
           <el-table-column prop="password" label="密码"/>
+          <el-table-column prop="getMailUrl" label="取件链接" min-width="220" show-overflow-tooltip/>
+          <el-table-column prop="expireTime" label="有效期" min-width="150">
+            <template #default="props">
+              {{ props.row.getMailUrl ? (props.row.expireTime || '永久') : '-' }}
+            </template>
+          </el-table-column>
         </el-table>
-        <el-button v-if="batchResults.length" @click="copyBatchResults">复制全部</el-button>
+        <div v-if="batchResults.length" class="batch-actions">
+          <el-button @click="copyBatchResults">复制全部</el-button>
+          <el-button @click="exportBatchCsv">导出 CSV</el-button>
+        </div>
+      </div>
+    </el-dialog>
+    <el-dialog v-model="showBatchTokenUpdate" title="批量更新取件链接" width="560" @closed="resetBatchTokenForm">
+      <div class="container">
+        <div class="form-tip">将为已选择用户的主邮箱重新生成取件链接，同邮箱旧取件链接会立即失效。</div>
+        <el-input-number v-model="batchTokenForm.tokenExpireDays" :min="0" :max="3650"/>
+        <div class="form-tip">令牌有效期，0 表示永久有效</div>
+        <el-button class="btn" type="primary" :loading="batchTokenLoading" @click="submitBatchTokenUpdate">更新</el-button>
+        <el-table v-if="batchTokenResults.length" :data="batchTokenResults" height="240">
+          <el-table-column prop="email" label="邮箱"/>
+          <el-table-column prop="getMailUrl" label="取件链接" min-width="240" show-overflow-tooltip/>
+          <el-table-column prop="expireTime" label="有效期" min-width="150">
+            <template #default="props">
+              {{ props.row.expireTime || '永久' }}
+            </template>
+          </el-table-column>
+        </el-table>
+        <div v-if="batchTokenResults.length" class="batch-actions">
+          <el-button @click="copyBatchTokenResults">复制全部</el-button>
+          <el-button @click="exportBatchTokenCsv">导出 CSV</el-button>
+        </div>
       </div>
     </el-dialog>
     <el-dialog class="account-dialog" v-model="accountShow" :title="t('userAccount')" @closed="resetAccountList" >
@@ -423,6 +462,7 @@ import {
   userSetTag,
   userAdd,
   userBatchAdd,
+  userBatchUpdateGetMailToken,
   userRestSendCount,
   userRestore,
   userDeleteAccount,
@@ -501,7 +541,13 @@ const batchForm = reactive({
   count: 10,
   password: '',
   roleName: '',
-  tag: ''
+  tag: '',
+  generateGetMailToken: false,
+  tokenExpireDays: 30
+})
+
+const batchTokenForm = reactive({
+  tokenExpireDays: 30
 })
 
 const params = reactive({
@@ -521,11 +567,14 @@ const userForm = reactive({
 
 const showAdd = ref(false)
 const showBatchAdd = ref(false)
+const showBatchTokenUpdate = ref(false)
 const accountShow = ref(false)
 const setTagShow = ref(false)
 const addLoading = ref(false);
 const batchLoading = ref(false);
+const batchTokenLoading = ref(false);
 const batchResults = reactive([])
+const batchTokenResults = reactive([])
 const setTypeShow = ref(false)
 const setPwdShow = ref(false)
 const pagerCount = ref(10)
@@ -762,6 +811,15 @@ function openBatchAdd() {
   showBatchAdd.value = true
 }
 
+function openBatchTokenUpdate() {
+  const rows = tableRef.value.getSelectionRows()
+  if (!rows.length) {
+    ElMessage.warning('请先选择用户')
+    return
+  }
+  showBatchTokenUpdate.value = true
+}
+
 function resetBatchAddForm() {
   batchForm.prefix = ''
   batchForm.domain = settingStore.domainList[0]?.replace('@', '') || ''
@@ -769,7 +827,14 @@ function resetBatchAddForm() {
   batchForm.password = ''
   batchForm.roleName = ''
   batchForm.tag = ''
+  batchForm.generateGetMailToken = false
+  batchForm.tokenExpireDays = 30
   batchResults.splice(0)
+}
+
+function resetBatchTokenForm() {
+  batchTokenForm.tokenExpireDays = 30
+  batchTokenResults.splice(0)
 }
 
 async function submitBatchAdd() {
@@ -790,8 +855,85 @@ async function submitBatchAdd() {
 }
 
 function copyBatchResults() {
-  navigator.clipboard.writeText(batchResults.map(row => `${row.email}----${row.password}`).join('\n'))
+  navigator.clipboard.writeText(batchResults.map(row => {
+    const parts = [row.email, row.password]
+    if (row.getMailUrl) {
+      parts.push(row.getMailUrl)
+    }
+    return parts.join('----')
+  }).join('\n'))
   ElMessage.success('已复制')
+}
+
+function csvEscape(value) {
+  const text = value == null ? '' : String(value)
+  return `"${text.replace(/"/g, '""')}"`
+}
+
+function exportBatchCsv() {
+  const rows = [
+    ['email', 'password', 'getMailUrl', 'expireTime'],
+    ...batchResults.map(row => [
+      row.email,
+      row.password,
+      row.getMailUrl || '',
+      row.getMailUrl ? (row.expireTime || '永久') : ''
+    ])
+  ]
+  const csv = rows.map(row => row.map(csvEscape).join(',')).join('\n')
+  const blob = new Blob(['\uFEFF' + csv], {type: 'text/csv;charset=utf-8;'})
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `batch-users-${Date.now()}.csv`
+  link.click()
+  URL.revokeObjectURL(url)
+}
+
+async function submitBatchTokenUpdate() {
+  const rows = tableRef.value.getSelectionRows()
+  const userIds = rows.map(row => row.userId).filter(Boolean)
+  if (!userIds.length) {
+    ElMessage.warning('请先选择用户')
+    return
+  }
+
+  batchTokenLoading.value = true
+  try {
+    const list = await userBatchUpdateGetMailToken({
+      userIds,
+      tokenExpireDays: batchTokenForm.tokenExpireDays
+    })
+    batchTokenResults.splice(0)
+    batchTokenResults.push(...(list || []))
+    ElMessage.success(`成功更新 ${batchTokenResults.length} 个取件链接`)
+  } finally {
+    batchTokenLoading.value = false
+  }
+}
+
+function copyBatchTokenResults() {
+  navigator.clipboard.writeText(batchTokenResults.map(row => `${row.email}----${row.getMailUrl}`).join('\n'))
+  ElMessage.success('已复制')
+}
+
+function exportBatchTokenCsv() {
+  const rows = [
+    ['email', 'getMailUrl', 'expireTime'],
+    ...batchTokenResults.map(row => [
+      row.email,
+      row.getMailUrl || '',
+      row.expireTime || '永久'
+    ])
+  ]
+  const csv = rows.map(row => row.map(csvEscape).join(',')).join('\n')
+  const blob = new Blob(['\uFEFF' + csv], {type: 'text/csv;charset=utf-8;'})
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `get-mail-tokens-${Date.now()}.csv`
+  link.click()
+  URL.revokeObjectURL(url)
 }
 
 function submit() {
@@ -1244,6 +1386,22 @@ function adjustWidth() {
   display: grid;
   grid-template-columns: 1fr;
   gap: 15px;
+}
+
+.form-tip {
+  margin-top: -8px;
+  color: #909399;
+  font-size: 12px;
+}
+
+.batch-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+
+  .el-button {
+    margin-left: 0;
+  }
 }
 
 .type {

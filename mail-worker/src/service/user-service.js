@@ -19,6 +19,7 @@ import reqUtils from '../utils/req-utils';
 import {oauth} from "../entity/oauth";
 import oauthService from "./oauth-service";
 import { generateEmailLocalName } from '../utils/random-name';
+import mailAccessTokenService from './mail-access-token-service';
 
 const userService = {
 
@@ -421,6 +422,13 @@ const userService = {
 		const { prefix, domain, count, password, roleName } = params;
 		const tag = (params.tag || '').trim();
 		const emailPrefix = (prefix || '').trim();
+		const generateGetMailToken = !!params.generateGetMailToken;
+		let tokenExpireDays = Number(params.tokenExpireDays);
+
+		if (Number.isNaN(tokenExpireDays) || tokenExpireDays < 0) {
+			tokenExpireDays = 30;
+		}
+		tokenExpireDays = Math.floor(tokenExpireDays);
 
 		if (!c.env.domain.includes(domain)) {
 			throw new BizError(t('notEmailDomain'));
@@ -467,7 +475,77 @@ const userService = {
 			await accountService.insert(c, { userId, email, name: emailUtils.getName(email) });
 			await this.updateUserInfo(c, userId, true);
 
-			results.push({ email, password });
+			const result = { email, password };
+
+			if (generateGetMailToken) {
+				const accountRow = await accountService.selectByEmailIncludeDel(c, email);
+				const tokenRow = await mailAccessTokenService.createForAccount(c, {
+					userId,
+					accountId: accountRow.accountId,
+					email,
+					expireDays: tokenExpireDays
+				});
+				const origin = new URL(c.req.url).origin;
+				result.getMailUrl = `${origin}/get_mail?gtoken=${encodeURIComponent(tokenRow.token)}`;
+				result.expireTime = tokenRow.expireTime || '';
+			}
+
+			results.push(result);
+		}
+
+		return results;
+	},
+
+	// 管理员批量更新用户主邮箱取件链接
+	async batchUpdateGetMailToken(c, params) {
+		let { userIds } = params;
+		let tokenExpireDays = Number(params.tokenExpireDays);
+
+		if (typeof userIds === 'string') {
+			userIds = userIds.split(',').map(Number).filter(Boolean);
+		}
+
+		if (!Array.isArray(userIds) || userIds.length === 0) {
+			throw new BizError('请选择用户');
+		}
+
+		userIds = userIds.map(Number).filter(Boolean);
+
+		if (userIds.length > 100) {
+			throw new BizError('单次最多更新 100 个用户');
+		}
+
+		if (Number.isNaN(tokenExpireDays) || tokenExpireDays < 0) {
+			tokenExpireDays = 30;
+		}
+		tokenExpireDays = Math.floor(tokenExpireDays);
+
+		const results = [];
+		const origin = new URL(c.req.url).origin;
+
+		for (const userId of userIds) {
+			const userRow = await this.selectById(c, userId);
+			if (!userRow || userRow.email === c.env.admin) {
+				continue;
+			}
+
+			const accountRow = await accountService.selectByEmailIncludeDel(c, userRow.email);
+			if (!accountRow || accountRow.isDel === isDel.DELETE) {
+				continue;
+			}
+
+			const tokenRow = await mailAccessTokenService.replaceForAccount(c, {
+				userId,
+				accountId: accountRow.accountId,
+				email: userRow.email,
+				expireDays: tokenExpireDays
+			});
+
+			results.push({
+				email: userRow.email,
+				getMailUrl: `${origin}/get_mail?gtoken=${encodeURIComponent(tokenRow.token)}`,
+				expireTime: tokenRow.expireTime || ''
+			});
 		}
 
 		return results;

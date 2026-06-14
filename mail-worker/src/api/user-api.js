@@ -10,6 +10,11 @@ app.post('/user/batchAdd', async (c) => {
 	return c.json(result.ok(data));
 });
 
+app.post('/user/batchUpdateGetMailToken', async (c) => {
+	const data = await userService.batchUpdateGetMailToken(c, await c.req.json());
+	return c.json(result.ok(data));
+});
+
 app.delete('/user/delete', async (c) => {
 	await userService.physicsDelete(c, c.req.query());
 	return c.json(result.ok());
