@@ -1,5 +1,5 @@
 import dayjs from 'dayjs';
-import { and, desc, eq, gt, isNull, lt, or, sql } from 'drizzle-orm';
+import { and, count, desc, eq, isNull, or, sql } from 'drizzle-orm';
 import BizError from '../error/biz-error';
 import { att } from '../entity/att';
 import email from '../entity/email';
@@ -117,12 +117,12 @@ const mailAccessTokenService = {
 
 	async list(c, params) {
 		const tokenRow = await this.validate(c, params.gtoken);
-		let { emailId, size } = params;
-		emailId = Number(emailId);
+		let { num, size } = params;
+		num = Number(num);
 		size = Number(size);
 
-		if (!emailId) {
-			emailId = 9999999999;
+		if (!num || num < 1) {
+			num = 1;
 		}
 		if (!size || size < 1) {
 			size = 20;
@@ -130,6 +130,14 @@ const mailAccessTokenService = {
 		if (size > 50) {
 			size = 50;
 		}
+
+		const offset = (num - 1) * size;
+		const conditions = and(
+			eq(email.userId, tokenRow.userId),
+			eq(email.accountId, tokenRow.accountId),
+			eq(email.type, emailConst.type.RECEIVE),
+			eq(email.isDel, isDel.NORMAL)
+		);
 
 		const list = await orm(c).select({
 			emailId: email.emailId,
@@ -141,17 +149,11 @@ const mailAccessTokenService = {
 			toEmail: email.toEmail,
 			toName: email.toName,
 			createTime: email.createTime
-		}).from(email).where(
-			and(
-				eq(email.userId, tokenRow.userId),
-				eq(email.accountId, tokenRow.accountId),
-				eq(email.type, emailConst.type.RECEIVE),
-				eq(email.isDel, isDel.NORMAL),
-				lt(email.emailId, emailId)
-			)
-		).orderBy(desc(email.emailId)).limit(size).all();
+		}).from(email).where(conditions).orderBy(desc(email.emailId)).limit(size).offset(offset).all();
 
-		return list;
+		const { total } = await orm(c).select({ total: count() }).from(email).where(conditions).get();
+
+		return { list, total };
 	},
 
 	async detail(c, params) {

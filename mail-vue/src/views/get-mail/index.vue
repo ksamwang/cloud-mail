@@ -27,24 +27,34 @@
       <section v-else class="mail-layout">
         <aside class="mail-list">
           <div class="list-title">收件箱</div>
-          <el-skeleton v-if="loading && !emails.length" :rows="6" animated/>
-          <el-empty v-else-if="!emails.length" description="暂无邮件"/>
-          <button
-              v-for="item in emails"
-              v-else
-              :key="item.emailId"
-              class="mail-item"
-              :class="{ active: current?.emailId === item.emailId }"
-              @click="openMail(item)"
-          >
-            <span class="subject">{{ item.subject || '(无主题)' }}</span>
-            <span class="sender">{{ item.sendEmail || item.name || '未知发件人' }}</span>
-            <span class="summary">{{ item.text || item.code || '' }}</span>
-            <span class="time">{{ formatTime(item.createTime) }}</span>
-          </button>
-          <el-button v-if="emails.length && hasMore" plain :loading="listLoading" @click="loadMore">
-            加载更多
-          </el-button>
+          <div class="mail-list-scroll">
+            <el-skeleton v-if="loading && !emails.length" :rows="6" animated/>
+            <el-empty v-else-if="!emails.length" description="暂无邮件"/>
+            <button
+                v-for="item in emails"
+                v-else
+                :key="item.emailId"
+                class="mail-item"
+                :class="{ active: current?.emailId === item.emailId }"
+                @click="openMail(item)"
+            >
+              <span class="subject">{{ item.subject || '(无主题)' }}</span>
+              <span class="sender">{{ item.sendEmail || item.name || '未知发件人' }}</span>
+              <span class="summary">{{ item.text || item.code || '' }}</span>
+              <span class="time">{{ formatTime(item.createTime) }}</span>
+            </button>
+          </div>
+          <el-pagination
+              v-if="total > pageParams.size"
+              v-model:current-page="pageParams.num"
+              v-model:page-size="pageParams.size"
+              small
+              background
+              layout="prev, pager, next"
+              :pager-count="5"
+              :total="total"
+              @current-change="loadPage"
+          />
         </aside>
 
         <article class="mail-detail">
@@ -100,7 +110,11 @@ const loading = ref(false)
 const listLoading = ref(false)
 const detailLoading = ref(false)
 const error = ref('')
-const hasMore = ref(true)
+const total = ref(0)
+const pageParams = reactive({
+  num: 1,
+  size: 20
+})
 
 function formatTime(time) {
   if (!time) return ''
@@ -120,13 +134,14 @@ async function reload() {
   error.value = ''
   emails.value = []
   current.value = null
-  hasMore.value = true
+  total.value = 0
+  pageParams.num = 1
   try {
     const data = await getMailInfo(gtoken.value)
     info.email = data.email
     info.expireTime = data.expireTime
     info.permanent = data.permanent
-    await loadMore()
+    await loadPage()
   } catch (e) {
     error.value = e?.message || '取件令牌无效或已过期'
   } finally {
@@ -134,18 +149,19 @@ async function reload() {
   }
 }
 
-async function loadMore() {
-  if (!hasMore.value || listLoading.value) return
+async function loadPage() {
+  if (listLoading.value) return
   listLoading.value = true
   try {
-    const last = emails.value[emails.value.length - 1]
-    const list = await getMailList({
+    const data = await getMailList({
       gtoken: gtoken.value,
-      emailId: last?.emailId || '',
-      size: 20
+      num: pageParams.num,
+      size: pageParams.size
     })
-    emails.value.push(...(list || []))
-    hasMore.value = (list || []).length >= 20
+    const list = data?.list || []
+    emails.value = list
+    total.value = data?.total || 0
+    current.value = null
     if (!current.value && emails.value.length) {
       await openMail(emails.value[0])
     }
@@ -172,14 +188,20 @@ reload()
 <style lang="scss" scoped>
 .pickup-page {
   min-height: 100vh;
+  max-height: 100vh;
   background: #f4f7fb;
   color: #1f2937;
+  overflow: hidden;
 }
 
 .pickup-shell {
   width: min(1180px, calc(100% - 32px));
   margin: 0 auto;
-  padding: 32px 0;
+  padding: 24px 0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .pickup-header {
@@ -187,7 +209,8 @@ reload()
   justify-content: space-between;
   align-items: center;
   gap: 16px;
-  padding: 20px 0 24px;
+  padding: 12px 0 18px;
+  flex: 0 0 auto;
 
   .label {
     color: #0f766e;
@@ -216,7 +239,9 @@ reload()
   display: grid;
   grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
   gap: 18px;
-  min-height: 680px;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
 }
 
 .mail-list,
@@ -224,6 +249,8 @@ reload()
   background: #ffffff;
   border: 1px solid #dbe4ee;
   border-radius: 8px;
+  max-height: 100%;
+  min-height: 0;
 }
 
 .mail-list {
@@ -231,11 +258,23 @@ reload()
   flex-direction: column;
   gap: 8px;
   padding: 14px;
+  overflow: hidden;
 }
 
 .list-title {
+  flex: 0 0 auto;
   font-weight: 700;
   padding: 2px 4px 8px;
+}
+
+.mail-list-scroll {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 2px;
 }
 
 .mail-item {
@@ -281,6 +320,7 @@ reload()
 .mail-detail {
   min-width: 0;
   padding: 24px;
+  overflow-y: auto;
 }
 
 .detail-head {
@@ -337,11 +377,12 @@ reload()
 @media (max-width: 820px) {
   .pickup-shell {
     width: min(100% - 20px, 680px);
-    padding: 18px 0;
+    padding: 12px 0;
   }
 
   .mail-layout {
     grid-template-columns: 1fr;
+    grid-template-rows: minmax(220px, 38vh) minmax(0, 1fr);
   }
 
   .mail-detail {
